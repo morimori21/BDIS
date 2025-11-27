@@ -1,4 +1,6 @@
-# Barangay Document Issuance System (BDIS) 'BETA VERSION, get ready to see bugs'
+# Barangay Document Issuance System (BDIS) 
+'BETA VERSION, get ready to see bugs'
+-Capstone Project-
 
 ## Setup Instructions
 
@@ -73,5 +75,11 @@ Project_A2/
 - Advanced chat features
 - Email notifications
 - Dark/Light mode toggle
+
+  Developers;
+  : Me
+  : Ni
+  : Go
+  : Br
 
 Enjoy using the BDIS system!
