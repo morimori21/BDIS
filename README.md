@@ -1,4 +1,4 @@
-# Barangay Document Issuance System (BDIS)
+# Barangay Document Issuance System (BDIS) 'BETA VERSION, get ready to see bugs'
 
 ## Setup Instructions
 
