@@ -1,5 +1,5 @@
 # Barangay Document Issuance System (BDIS) 
-'BETA VERSION, get ready to see bugs'
+FINALIZED 
 -Capstone Project-
 
 ## Setup Instructions
