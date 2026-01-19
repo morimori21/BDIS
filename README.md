@@ -83,3 +83,6 @@ Project_A2/
   : Br
 
 Enjoy using the BDIS system!
+
+User Manual :
+[BDIS_USER_MANUAL.pdf](https://github.com/user-attachments/files/24716250/BDIS_USER_MANUAL.pdf)
