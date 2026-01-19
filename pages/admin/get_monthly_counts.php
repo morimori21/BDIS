@@ -1,6 +1,5 @@
 <?php
 require '../../includes/config.php'; 
-
 if(isset($_GET['year'])){
     $year = (int)$_GET['year'];
     

@@ -12,7 +12,7 @@ $ticket_id = intval($_GET['ticket_id']);
 
 $ticket_id = (int)$_GET['ticket_id'];
 
-// ✅ Get current user ID safely (works for both session structures)
+// Get current user ID safely (works for both session structures)
 if (isset($_SESSION['user']['user_id'])) {
     $current_user_id = $_SESSION['user']['user_id'];
 } elseif (isset($_SESSION['user_id'])) {

@@ -233,7 +233,7 @@ body{
   padding: 0;
   overflow-x: hidden;
 }
-/* Chat Container Structure */
+
 .col-lg-8 .card {
     height: 80vh;
     max-height: 80vh;
@@ -252,7 +252,6 @@ body{
     min-height: min-content;
 }
 
-/* Message Items */
 .message-item {
     display: flex;
     gap: 10px;
@@ -264,7 +263,6 @@ body{
     flex-direction: row-reverse;
 }
 
-/* Message Avatar */
 .message-avatar {
     width: 40px;
     height: 40px;
@@ -273,9 +271,10 @@ body{
     border: 2px solid #fff;
     box-shadow: 0 2px 4px rgba(0,0,0,0.1);
     flex-shrink: 0;
+    align-self: flex-end; 
+    margin-bottom: 2.8em; 
 }
 
-/* Message Content */
 .message-content {
     max-width: 75%;
     display: flex;
@@ -295,7 +294,6 @@ body{
     padding: 0 12px;
 }
 
-/* Message Bubble */
 .message-bubble {
     padding: 12px 16px;
     border-radius: 18px;
@@ -328,7 +326,6 @@ body{
     white-space: nowrap;
 }
 
-/* Message Input */
 .auto-grow {
     min-height: 40px;
     max-height: 200px;
@@ -367,7 +364,6 @@ body{
     pointer-events: none;
 }
 
-/* Chat Footer */
 #chat-footer {
     position: sticky;
     bottom: 0;
@@ -376,7 +372,6 @@ body{
     border-top: 1px solid #e9ecef;
 }
 
-/* Scrollbars */
 #chat-body {
     scrollbar-width: thin;
     scrollbar-color: #888 #f1f1f1;
@@ -400,7 +395,6 @@ body{
     background: #555;
 }
 
-/* Animations */
 @keyframes fadeIn {
     from {
         opacity: 0;
@@ -412,7 +406,6 @@ body{
     }
 }
 
-/* Message Status */
 .message-status {
     padding: 2px 12px 0;
     font-size: 0.65rem;
@@ -427,7 +420,6 @@ body{
     text-align: left;
 }
 
-/* Style for different status states */
 .message-status .text-primary {
     color: #667eea !important;
     font-weight: 500;
@@ -437,7 +429,6 @@ body{
     color: #6c757d !important;
 }
 
-/* Responsive */
 @media (max-width: 768px) {
     .message-content {
         max-width: 85%;

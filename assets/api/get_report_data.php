@@ -1,15 +1,12 @@
 <?php
-// get_report_data.php - Located in: Project_A2/assets/api/
 error_reporting(E_ALL);
 ini_set('display_errors', 0);
 
-// Enable CORS
 header('Access-Control-Allow-Origin: *');
 header('Access-Control-Allow-Methods: GET, POST');
 header('Content-Type: application/json');
 
 try {
-    // CORRECT PATH: Go to Project_A2/includes/config.php
     $configPath = __DIR__ . '/../../includes/config.php';
     
     if (!file_exists($configPath)) {
@@ -24,11 +21,13 @@ try {
 
     $period = $_GET['period'] ?? 'monthly';
 
-    // User Overview
+    // ========= USER OVERVIEW =========
     $totalUsers = $pdo->query("SELECT COUNT(*) FROM users")->fetchColumn();
     $rejectedUsers = $pdo->query("SELECT COUNT(*) FROM users WHERE status = 'rejected'")->fetchColumn();
+    $verifiedUsers = $pdo->query("SELECT COUNT(*) FROM users WHERE status = 'verified'")->fetchColumn();
+    $pendingUsers = $pdo->query("SELECT COUNT(*) FROM users WHERE status = 'pending'")->fetchColumn();
 
-    // Request Overview based on period
+    // ========= REQUEST WHERE CLAUSES =========
     $requestWhere = "";
     $revenueWhere = "";
     $ticketWhere = "";
@@ -50,22 +49,72 @@ try {
             $ticketWhere = "AND MONTH(ticket_created_at) = MONTH(CURDATE()) AND YEAR(ticket_created_at) = YEAR(CURDATE())";
     }
 
-    $totalRequests = $pdo->query("SELECT COUNT(*) FROM document_requests WHERE 1=1 $requestWhere")->fetchColumn();
-    $rejectedRequests = $pdo->query("SELECT COUNT(*) FROM document_requests WHERE request_status = 'rejected' $requestWhere")->fetchColumn();
+    // ========= REQUEST OVERVIEW =========
+    // Total Requests: in-progress + completed
+    $totalRequests = $pdo->query("
+        SELECT COUNT(*) 
+        FROM document_requests 
+        WHERE request_status IN ('in-progress', 'completed')
+        $requestWhere
+    ")->fetchColumn();
+    
+    // Rejected requests
+    $rejectedRequests = $pdo->query("
+        SELECT COUNT(*) 
+        FROM document_requests 
+        WHERE request_status = 'rejected' 
+        $requestWhere
+    ")->fetchColumn();
+    
+    // Pending requests
+    $pendingRequests = $pdo->query("
+        SELECT COUNT(*) 
+        FROM document_requests 
+        WHERE request_status = 'pending' 
+        $requestWhere
+    ")->fetchColumn();
+    
+    // In-progress requests
+    $inProgressRequests = $pdo->query("
+        SELECT COUNT(*) 
+        FROM document_requests 
+        WHERE request_status = 'in-progress' 
+        $requestWhere
+    ")->fetchColumn();
+    
+    // Completed requests
+    $completedRequests = $pdo->query("
+        SELECT COUNT(*) 
+        FROM document_requests 
+        WHERE request_status = 'completed' 
+        $requestWhere
+    ")->fetchColumn();
+    
+    // Picked-up requests
+    $pickedUpRequests = $pdo->query("
+        SELECT COUNT(*) 
+        FROM document_requests 
+        WHERE request_status = 'picked-up' 
+        $requestWhere
+    ")->fetchColumn();
 
-    // Revenue Overview
+    // ========= REVENUE OVERVIEW =========
+    // Revenue: include in-progress, completed, and picked-up (since they're paid)
     $totalRevenue = $pdo->query("
         SELECT COALESCE(SUM(dt.doc_price), 0) 
         FROM document_requests dr 
         JOIN document_types dt ON dr.doc_type_id = dt.doc_type_id 
-        WHERE dr.request_status IN ('printed', 'signed', 'completed') 
+        WHERE dr.request_status IN ('in-progress', 'completed', 'picked-up')
         $revenueWhere
     ")->fetchColumn();
 
-    // Support Tickets
+    // ========= SUPPORT TICKETS =========
     $totalTickets = $pdo->query("SELECT COUNT(*) FROM support_tickets WHERE 1=1 $ticketWhere")->fetchColumn();
+    $openTickets = $pdo->query("SELECT COUNT(*) FROM support_tickets WHERE ticket_status = 'open' $ticketWhere")->fetchColumn();
+    $inProgressTickets = $pdo->query("SELECT COUNT(*) FROM support_tickets WHERE ticket_status = 'in-progress' $ticketWhere")->fetchColumn();
+    $resolvedTickets = $pdo->query("SELECT COUNT(*) FROM support_tickets WHERE ticket_status = 'resolved' $ticketWhere")->fetchColumn();
 
-    // Request Chart Data
+    // ========= REQUEST CHART DATA =========
     $requestChartLabels = [];
     $requestChartData = [];
     
@@ -75,6 +124,7 @@ try {
                 SELECT DATE_FORMAT(date_requested, '%a') AS day, COUNT(*) AS count
                 FROM document_requests 
                 WHERE YEARWEEK(date_requested, 1) = YEARWEEK(CURDATE(), 1)
+                AND request_status IN ('in-progress', 'completed')
                 GROUP BY DATE(date_requested)
                 ORDER BY DATE(date_requested)
             ");
@@ -84,6 +134,7 @@ try {
                 SELECT DATE_FORMAT(date_requested, '%b') AS month, COUNT(*) AS count
                 FROM document_requests 
                 WHERE YEAR(date_requested) = YEAR(CURDATE())
+                AND request_status IN ('in-progress', 'completed')
                 GROUP BY MONTH(date_requested)
                 ORDER BY MONTH(date_requested)
             ");
@@ -93,7 +144,9 @@ try {
                 SELECT WEEK(date_requested, 1) - WEEK(DATE_SUB(date_requested, INTERVAL DAYOFMONTH(date_requested)-1 DAY), 1) + 1 AS week_num,
                        COUNT(*) AS count
                 FROM document_requests 
-                WHERE MONTH(date_requested) = MONTH(CURDATE()) AND YEAR(date_requested) = YEAR(CURDATE())
+                WHERE MONTH(date_requested) = MONTH(CURDATE()) 
+                AND YEAR(date_requested) = YEAR(CURDATE())
+                AND request_status IN ('in-progress', 'completed')
                 GROUP BY week_num
                 ORDER BY week_num
             ");
@@ -108,7 +161,7 @@ try {
         $requestChartData[] = (int)$row['count'];
     }
 
-    // Revenue Chart Data
+    // ========= REVENUE CHART DATA =========
     $revenueChartLabels = [];
     $revenueChartData = [];
     
@@ -119,7 +172,7 @@ try {
                        COALESCE(SUM(dt.doc_price), 0) AS total
                 FROM document_requests dr
                 JOIN document_types dt ON dr.doc_type_id = dt.doc_type_id
-                WHERE dr.request_status IN ('printed','signed','completed')
+                WHERE dr.request_status IN ('in-progress', 'completed', 'picked-up')
                 AND YEARWEEK(dr.date_requested, 1) = YEARWEEK(CURDATE(), 1)
                 GROUP BY DATE(dr.date_requested)
                 ORDER BY DATE(dr.date_requested)
@@ -131,7 +184,7 @@ try {
                        COALESCE(SUM(dt.doc_price), 0) AS total
                 FROM document_requests dr
                 JOIN document_types dt ON dr.doc_type_id = dt.doc_type_id
-                WHERE dr.request_status IN ('printed','signed','completed')
+                WHERE dr.request_status IN ('in-progress', 'completed', 'picked-up')
                 AND YEAR(dr.date_requested) = YEAR(CURDATE())
                 GROUP BY MONTH(dr.date_requested)
                 ORDER BY MONTH(dr.date_requested)
@@ -143,8 +196,9 @@ try {
                        COALESCE(SUM(dt.doc_price), 0) AS total
                 FROM document_requests dr
                 JOIN document_types dt ON dr.doc_type_id = dt.doc_type_id
-                WHERE dr.request_status IN ('printed','signed','completed')
-                AND MONTH(dr.date_requested) = MONTH(CURDATE()) AND YEAR(dr.date_requested) = YEAR(CURDATE())
+                WHERE dr.request_status IN ('in-progress', 'completed', 'picked-up')
+                AND MONTH(dr.date_requested) = MONTH(CURDATE()) 
+                AND YEAR(dr.date_requested) = YEAR(CURDATE())
                 GROUP BY week_num
                 ORDER BY week_num
             ");
@@ -159,7 +213,7 @@ try {
         $revenueChartData[] = (float)$row['total'];
     }
 
-    // Calculate prediction (simple trend based on last two data points)
+    // ========= PREDICTION CALCULATION =========
     $prediction = 0;
     if(count($revenueChartData) >= 2) {
         $lastValue = end($revenueChartData);
@@ -170,21 +224,32 @@ try {
         }
     }
 
+    // Return the complete data
     echo json_encode([
+        'success' => true,
         'userOverview' => [
             'totalUsers' => (int)$totalUsers,
-            'rejectedUsers' => (int)$rejectedUsers
+            'rejectedUsers' => (int)$rejectedUsers,
+            'verifiedUsers' => (int)$verifiedUsers,
+            'pendingUsers' => (int)$pendingUsers
         ],
         'requestOverview' => [
             'totalRequests' => (int)$totalRequests,
-            'rejectedRequests' => (int)$rejectedRequests
+            'rejectedRequests' => (int)$rejectedRequests,
+            'pendingRequests' => (int)$pendingRequests,
+            'inProgressRequests' => (int)$inProgressRequests,
+            'completedRequests' => (int)$completedRequests,
+            'pickedUpRequests' => (int)$pickedUpRequests
         ],
         'revenueOverview' => [
             'totalRevenue' => (float)$totalRevenue,
             'prediction' => (float)$prediction
         ],
         'supportTickets' => [
-            'totalTickets' => (int)$totalTickets
+            'totalTickets' => (int)$totalTickets,
+            'openTickets' => (int)$openTickets,
+            'inProgressTickets' => (int)$inProgressTickets,
+            'resolvedTickets' => (int)$resolvedTickets
         ],
         'requestChart' => [
             'labels' => $requestChartLabels,
@@ -198,9 +263,9 @@ try {
 
 } catch (PDOException $e) {
     http_response_code(500);
-    echo json_encode(['error' => 'Database error: ' . $e->getMessage()]);
+    echo json_encode(['success' => false, 'error' => 'Database error: ' . $e->getMessage()]);
 } catch (Exception $e) {
     http_response_code(500);
-    echo json_encode(['error' => 'Error: ' . $e->getMessage()]);
+    echo json_encode(['success' => false, 'error' => 'Error: ' . $e->getMessage()]);
 }
 ?>

@@ -42,7 +42,7 @@ try {
     $stmt->execute([$ticket_id, $_SESSION['user_id'], $message]);
     
     // Log activity
-    logActivity($_SESSION['user_id'], "Sent message to support ticket #$ticket_id");
+    logActivity($_SESSION['user_id'], "Sent message to support ticket");
     
     echo json_encode([
         'success' => true,

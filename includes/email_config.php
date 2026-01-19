@@ -5,12 +5,12 @@ use PHPMailer\PHPMailer\PHPMailer;
 use PHPMailer\PHPMailer\SMTP;
 use PHPMailer\PHPMailer\Exception;
 
-// Email configuration - Update these settings with your email provider details
-define('SMTP_HOST', 'smtp.gmail.com');  // Change to your SMTP host
+// Email configuration
+define('SMTP_HOST', 'smtp.gmail.com');  
 define('SMTP_PORT', 587);
-define('SMTP_USERNAME', 'sanjosefnorte172@gmail.com');  // Change to your email
-define('SMTP_PASSWORD', 'scbl hhjv tluo fqwh');     // Change to your app password
-define('FROM_EMAIL', 'sanjosefnorte172@gmail.com');     // Change to your email
+define('SMTP_USERNAME', 'sanjosefnorte172@gmail.com'); 
+define('SMTP_PASSWORD', 'scbl hhjv tluo fqwh');     
+define('FROM_EMAIL', 'sanjosefnorte172@gmail.com');    
 define('FROM_NAME', 'BDIS - Barangay Document Issuance System');
 
 /**
@@ -83,7 +83,7 @@ function sendOTPEmail($to_email, $to_name, $otp_code, $subject = 'BDIS Verificat
 
 /**
  * Generate a random 6-digit OTP code
- * @return string 6-digit OTP code
+ * @return string
  */
 function generateOTP() {
     return sprintf('%06d', mt_rand(100000, 999999));

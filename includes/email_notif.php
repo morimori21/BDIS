@@ -4,12 +4,12 @@ use PHPMailer\PHPMailer\PHPMailer;
 use PHPMailer\PHPMailer\SMTP;
 use PHPMailer\PHPMailer\Exception;
 
-// Email configuration - Update these settings with your email provider details
-define('SMTP_HOST', 'smtp.gmail.com');  // Change to your SMTP host
+// Email configuration
+define('SMTP_HOST', 'smtp.gmail.com');  
 define('SMTP_PORT', 587);
-define('SMTP_USERNAME', 'sanjosefnorte172@gmail.com');  // Change to your email
-define('SMTP_PASSWORD', 'scbl hhjv tluo fqwh');     // Change to your app password
-define('FROM_EMAIL', 'sanjosefnorte172@gmail.com');     // Change to your email
+define('SMTP_USERNAME', 'sanjosefnorte172@gmail.com');  
+define('SMTP_PASSWORD', 'scbl hhjv tluo fqwh');    
+define('FROM_EMAIL', 'sanjosefnorte172@gmail.com');  
 define('FROM_NAME', 'BDIS - Barangay Document Issuance System');
 
 
@@ -25,7 +25,7 @@ function sendAccountStatusEmail($to, $name, $status, $remarks = null) {
         $mail->SMTPSecure = PHPMailer::ENCRYPTION_STARTTLS;
         $mail->Port       = SMTP_PORT;
 
-        $mail->SMTPDebug = SMTP::DEBUG_SERVER; // enable SMTP debug
+        $mail->SMTPDebug = SMTP::DEBUG_SERVER; 
         $mail->Debugoutput = 'error_log';
 
             // Recipients

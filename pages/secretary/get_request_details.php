@@ -3,6 +3,9 @@ require_once '../../includes/config.php';
 redirectIfNotLoggedIn();
 redirectIfNotRole('secretary');
 
+// Set JSON content type
+header('Content-Type: application/json');
+
 if (isset($_GET['id'])) {
     $request_id = $_GET['id'];
     
@@ -23,6 +26,9 @@ if (isset($_GET['id'])) {
     
     $stmt->execute([$request_id]);
     $request = $stmt->fetch();
+    
+    // Start output buffering to capture HTML
+    ob_start();
 
 
     
@@ -168,18 +174,57 @@ if (isset($_GET['id'])) {
                         </div>
                     </div>";
         
-        // Show remarks if available
-        if (!empty($request['request_remarks'])) {
-            echo "
+        // Determine remarks to display (always standardized, except show rejection reason text)
+        $statusKey = strtolower($request['request_status'] ?? 'pending');
+        $defaultRemarks = '';
+        switch ($statusKey) {
+            case 'pending':
+                $defaultRemarks = 'Your Have Requested A Document, awaiting for approval';
+                break;
+            case 'in-progress':
+                $defaultRemarks = 'Your Requested Document has been approved and waiting to be printed';
+                break;
+            case 'printed':
+            case 'for-signing':
+                $defaultRemarks = 'Your Document is printed, waiting for Barangay Captain to sign it.';
+                break;
+            case 'signed':
+                $defaultRemarks = 'Your document is signed and ready for pickup';
+                break;
+            case 'completed':
+                $defaultRemarks = 'The Document is already Received';
+                break;
+            case 'rejected':
+                $defaultRemarks = 'Reason of Rejection';
+                break;
+            default:
+                $defaultRemarks = '';
+        }
+
+        $remarksRaw = trim((string)($request['request_remarks'] ?? ''));
+        $remarks = $defaultRemarks;
+        if ($statusKey === 'rejected') {
+            if ($remarksRaw !== '') {
+                // Avoid double prefix if already saved with label
+                if (stripos($remarksRaw, 'Reason of Rejection') === 0) {
+                    $remarks = $remarksRaw;
+                } else {
+                    $remarks = 'Reason of Rejection: ' . $remarksRaw;
+                }
+            } else {
+                $remarks = $defaultRemarks;
+            }
+        }
+
+        echo "
                     <div class='mt-4'>
                         <h6 class='text-primary mb-3 fw-bold'>
                             <i class='bi bi-chat-text me-2'></i>Additional Remarks
                         </h6>
                         <div class='bg-light p-3 rounded'>
-                            <p class='mb-0 text-muted'>" . htmlspecialchars($request['request_remarks']) . "</p>
+                            <p class='mb-0 text-muted'>" . htmlspecialchars($remarks) . "</p>
                         </div>
                     </div>";
-        }
         
         echo "
                 </div>
@@ -189,7 +234,14 @@ if (isset($_GET['id'])) {
     } else {
         echo "<div class='alert alert-danger'><i class='bi bi-exclamation-triangle me-2'></i>Request not found.</div>";
     }
+    
+    // Capture output and return as JSON
+    $html = ob_get_clean();
+    echo json_encode(['html' => $html]);
 } else {
+    ob_start();
     echo "<div class='alert alert-danger'><i class='bi bi-exclamation-triangle me-2'></i>Invalid request ID.</div>";
+    $html = ob_get_clean();
+    echo json_encode(['html' => $html]);
 }
 ?>

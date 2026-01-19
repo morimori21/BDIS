@@ -1,7 +1,6 @@
 <?php
 require_once '../../includes/config.php';
 redirectIfNotLoggedIn();
-
 // Helper function for file size formatting
 if (!function_exists('formatBytes')) {
     function formatBytes($size, $precision = 2) {
@@ -12,7 +11,6 @@ if (!function_exists('formatBytes')) {
         return round($size, $precision) . ' ' . $units[$i];
     }
 }
-
 // Handle barangay update BEFORE any output
 if ($_SERVER['REQUEST_METHOD'] == 'POST' && isset($_POST['update_barangay'])) {
     $stmt = $pdo->query("SELECT * FROM address_config LIMIT 1");
@@ -43,7 +41,6 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST' && isset($_POST['update_barangay'])) {
             }
         }
     }
-
     // Handle City Logo upload
     if (isset($_FILES['city_logo']) && $_FILES['city_logo']['error'] == 0) {
         $allowed = ['jpg', 'jpeg', 'png'];
@@ -88,7 +85,7 @@ if (isset($_GET['toggle_status']) && is_numeric($_GET['toggle_status'])) {
         $new_status = ($doc['doc_status'] == 'Open') ? 'Closed' : 'Open';
         $stmt = $pdo->prepare("UPDATE document_types SET doc_status = ? WHERE doc_type_id = ?");
         $stmt->execute([$new_status, $doc_id]);
-        logActivity($_SESSION['user_id'], "Changed {$doc['name']} status to {$new_status}");
+        logActivity($_SESSION['user_id'], "Changed {$doc['doc_name']} status to {$new_status}");
         
         // Redirect to remove the parameter from URL
         $_SESSION['success_message'] = "Document status updated to {$new_status}!";
@@ -129,209 +126,246 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST' && isset($_POST['update_price'])) {
     }
 }
 
-// Handle updating barangay officials BEFORE any output
-// NOTE: This feature is disabled until barangay_officials table is created
-// To enable: run add_barangay_officials_table.sql
-/*
-if ($_SERVER['REQUEST_METHOD'] == 'POST' && isset($_POST['update_officials'])) {
-    $officials = $_POST['officials'] ?? [];
-    
-    if (!empty($officials)) {
-        foreach ($officials as $position => $fullName) {
-            $stmt = $pdo->prepare("UPDATE barangay_officials SET full_name = ? WHERE position = ?");
-            $stmt->execute([sanitize($fullName), $position]);
-        }
-        
-        logActivity($_SESSION['user_id'], 'Updated barangay officials');
-        $_SESSION['officials_update_success'] = true;
-        header('Location: system_configuration.php');
-        exit;
-    }
-}
-*/
 
 include 'header.php';
 ?>
 
 <style>
-    .card {
-        box-shadow: 0 2px 8px rgba(0,0,0,0.08);
-        border: none;
+    .custom-card {
+        background: #fff;
+        border: 1px solid #e9ecef; 
         border-radius: 8px;
+        box-shadow: 0 4px 12px rgba(0,0,0,0.05);
+        padding: 20px;
+        margin-bottom: 20px;
     }
-    
-    .card-header {
-        border-radius: 8px 8px 0 0 !important;
+    .form-control:focus {
+        border-color: #0d6efd;
+        box-shadow: 0 0 0 0.25rem rgba(13, 110, 253, 0.25);
+    }
+    .logo-preview-box {
+        width: 60px;
+        height: 60px;
+        object-fit: contain;
+        border: 1px solid #dee2e6;
+        padding: 5px;
+        border-radius: 6px;
+    }
+
+    .table-dark-blue thead {
+        background-color: #0d6efd; 
+        color: white;
+    }
+    .table-dark-blue thead th {
+        border-color: #0d6efd;
     }
 </style>
 
 <div class="container">
     <h2 class="mb-4">System Configuration</h2>
-    <div class="row align-items-start">
+    
+    <div class="row g-4">
+        
         <div class="col-md-6">
-            <h4 class="mb-2">Barangay Details</h4>
-            <?php
-            // Get current barangay details
-            $stmt = $pdo->query("SELECT * FROM address_config LIMIT 1");
-            $barangay = $stmt->fetch();
-            
-            // Display success message if exists
-            if (isset($_SESSION['barangay_update_success'])) {
-                echo "<div class='alert alert-success'>Barangay details updated!</div>";
-                unset($_SESSION['barangay_update_success']);
-            }
-            
-            if (isset($_SESSION['officials_update_success'])) {
-                echo "<div class='alert alert-success'>Barangay officials updated!</div>";
-                unset($_SESSION['officials_update_success']);
-            }
-            ?>
-            <form method="POST" enctype="multipart/form-data">
-                <div class="mb-1">
-                    <label for="brgy_name" class="form-label">Barangay Name</label>
-                    <input type="text" class="form-control form-control-sm" id="brgy_name" name="brgy_name" value="<?php echo $barangay['brgy_name'] ?? ''; ?>" required onkeydown="preventEnterSubmit(event)">
-                </div>
-                <div class="mb-1">
-                    <label for="municipality" class="form-label">Municipality</label>
-                    <input type="text" class="form-control form-control-sm" id="municipality" name="municipality" value="<?php echo $barangay['municipality'] ?? ''; ?>" required onkeydown="preventEnterSubmit(event)">
-                </div>
-                <div class="mb-1">
-                    <label for="province" class="form-label">Province</label>
-                    <input type="text" class="form-control form-control-sm" id="province" name="province" value="<?php echo $barangay['province'] ?? ''; ?>" required onkeydown="preventEnterSubmit(event)">
-                </div>
+            <div class="custom-card">
+                <h4 class="mb-3 text-primary">Barangay Details</h4>
+                <?php
+                // Get current barangay details
+                $stmt = $pdo->query("SELECT * FROM address_config LIMIT 1");
+                $barangay = $stmt->fetch();
                 
-                <!-- Barangay Logo -->
-                <div class="mb-1">
-                    <label for="brgy_logo" class="form-label">Barangay Logo</label>
-                    <div class="d-flex align-items-start gap-2">
-                        <?php if ($barangay && !empty($barangay['brgy_logo'])): ?>
-                            <div>
-                                <img src="data:image/png;base64,<?php echo base64_encode($barangay['brgy_logo']); ?>" alt="Current Barangay Logo" style="width: 50px; height: 50px;" class="img-thumbnail">
-                                <small class="text-muted d-block text-center" style="font-size: 0.7rem;">Current logo</small>
+                // Display success message if exists
+                if (isset($_SESSION['barangay_update_success'])) {
+                    echo "<div class='alert alert-success alert-dismissible fade show' role='alert'>
+                            <i class='bi bi-check-circle-fill me-1'></i> Barangay details updated successfully!
+                            <button type='button' class='btn-close' data-bs-dismiss='alert' aria-label='Close'></button>
+                          </div>";
+                    unset($_SESSION['barangay_update_success']);
+                }
+                
+                if (isset($_SESSION['officials_update_success'])) {
+                    echo "<div class='alert alert-success alert-dismissible fade show' role='alert'>
+                            <i class='bi bi-check-circle-fill me-1'></i> Barangay officials updated!
+                            <button type='button' class='btn-close' data-bs-dismiss='alert' aria-label='Close'></button>
+                          </div>";
+                    unset($_SESSION['officials_update_success']);
+                }
+                ?>
+                <form method="POST" enctype="multipart/form-data">
+                    <div class="mb-3">
+                        <label for="brgy_name" class="form-label fw-bold">Barangay Name</label>
+                        <input type="text" class="form-control form-control-sm" id="brgy_name" name="brgy_name" 
+                               value="<?php echo htmlspecialchars($barangay['brgy_name'] ?? ''); ?>" required 
+                               onkeydown="preventEnterSubmit(event)">
+                    </div>
+                    <div class="mb-3">
+                        <label for="municipality" class="form-label fw-bold">Municipality / City</label>
+                        <input type="text" class="form-control form-control-sm" id="municipality" name="municipality" 
+                               value="<?php echo htmlspecialchars($barangay['municipality'] ?? ''); ?>" required 
+                               onkeydown="preventEnterSubmit(event)">
+                    </div>
+                    <div class="mb-3">
+                        <label for="province" class="form-label fw-bold">Province</label>
+                        <input type="text" class="form-control form-control-sm" id="province" name="province" 
+                               value="<?php echo htmlspecialchars($barangay['province'] ?? ''); ?>" required 
+                               onkeydown="preventEnterSubmit(event)">
+                    </div>
+                    
+                    <hr class="my-3">
+                    
+                    <div class="mb-3">
+                        <label for="brgy_logo" class="form-label fw-bold">Barangay Logo (JPG or PNG)</label>
+                        <div class="d-flex align-items-center gap-3">
+                            <?php if ($barangay && !empty($barangay['brgy_logo'])): ?>
+                                <div class="text-center">
+                                    <img src="data:image/png;base64,<?php echo base64_encode($barangay['brgy_logo']); ?>" 
+                                         alt="Current Barangay Logo" class="logo-preview-box">
+                                    <small class="text-muted d-block" style="font-size: 0.7rem;">Current</small>
+                                </div>
+                            <?php endif; ?>
+                            <div class="flex-grow-1">
+                                <input type="file" class="form-control form-control-sm" id="brgy_logo" name="brgy_logo" accept=".jpg,.jpeg,.png">
+                                <small class="form-text text-muted">Leave empty to keep the current logo.</small>
                             </div>
-                        <?php endif; ?>
-                        <div class="flex-grow-1">
-                            <input type="file" class="form-control form-control-sm" id="brgy_logo" name="brgy_logo" accept=".jpg,.jpeg,.png">
-                            <small class="text-muted" style="font-size: 0.75rem;">JPG or PNG only. Leave empty to keep current logo.</small>
                         </div>
                     </div>
-                </div>
-                
-                <!-- City/Municipality Logo -->
-                <div class="mb-1">
-                    <label for="city_logo" class="form-label">City/Municipality Logo</label>
-                    <div class="d-flex align-items-start gap-2">
-                        <?php if ($barangay && !empty($barangay['city_logo'])): ?>
-                            <div>
-                                <img src="data:image/png;base64,<?php echo base64_encode($barangay['city_logo']); ?>" alt="Current City Logo" style="width: 50px; height: 50px;" class="img-thumbnail">
-                                <small class="text-muted d-block text-center" style="font-size: 0.7rem;">Current logo</small>
+                    
+                    <div class="mb-4">
+                        <label for="city_logo" class="form-label fw-bold">City/Municipality Logo (JPG or PNG)</label>
+                        <div class="d-flex align-items-center gap-3">
+                            <?php if ($barangay && !empty($barangay['city_logo'])): ?>
+                                <div class="text-center">
+                                    <img src="data:image/png;base64,<?php echo base64_encode($barangay['city_logo']); ?>" 
+                                         alt="Current City Logo" class="logo-preview-box">
+                                    <small class="text-muted d-block" style="font-size: 0.7rem;">Current</small>
+                                </div>
+                            <?php endif; ?>
+                            <div class="flex-grow-1">
+                                <input type="file" class="form-control form-control-sm" id="city_logo" name="city_logo" accept=".jpg,.jpeg,.png">
+                                <small class="form-text text-muted">Leave empty to keep the current logo.</small>
                             </div>
-                        <?php endif; ?>
-                        <div class="flex-grow-1">
-                            <input type="file" class="form-control form-control-sm" id="city_logo" name="city_logo" accept=".jpg,.jpeg,.png">
-                            <small class="text-muted" style="font-size: 0.75rem;">JPG or PNG only. Leave empty to keep current logo.</small>
                         </div>
                     </div>
-                </div>
-                
-                <button type="submit" name="update_barangay" class="btn btn-primary btn-sm">
-                    <i class="bi bi-check-circle"></i> Update Barangay Details
-                </button>
-            </form>
+                    
+                    <button type="submit" name="update_barangay" class="btn btn-primary w-100">
+                        <i class="bi bi-save-fill me-1"></i> Save Barangay Details
+                    </button>
+                </form>
+            </div>
         </div>
+        
         <div class="col-md-6">
-            <h4 class="mb-2">Document Types & Prices</h4>
-            <?php
-            // Display success message if exists
-            if (isset($_SESSION['success_message'])) {
-                echo "<div class='alert alert-success'>{$_SESSION['success_message']}</div>";
-                unset($_SESSION['success_message']);
-            }
-            ?>
-            
-            <table class="table table-hover table-sm">
-                <thead class="table-dark">
-                    <tr>
-                        <th>Name</th>
-                        <th>Price</th>
-                        <th>Status</th>
-                        <th>Action</th>
-                    </tr>
-                </thead>
-                <tbody>
-                    <?php
-                    $stmt = $pdo->query("
-                        SELECT dt.*
-                        FROM document_types dt
-                        INNER JOIN (
-                            SELECT doc_name, MAX(doc_type_id) AS max_id
-                            FROM document_types
-                            GROUP BY doc_name
-                        ) latest ON dt.doc_type_id = latest.max_id
-                        ORDER BY dt.doc_name ASC
-                    ");
-                    while ($type = $stmt->fetch()) {
-                        $statusBadge = $type['doc_status'] == 'Open' 
-                            ? "<span class='badge bg-success'><i class='bi bi-check-circle'></i> Open</span>" 
-                            : "<span class='badge bg-secondary'><i class='bi bi-x-circle'></i> Closed</span>";
-                        
-                        $toggleIcon = $type['doc_status'] == 'Open' ? 'toggle-on' : 'toggle-off';
-                        $toggleColor = $type['doc_status'] == 'Open' ? 'success' : 'secondary';
-                        
-                        echo "<tr>
-                            <td><strong>{$type['doc_name']}</strong></td>
-                            <td>₱" . number_format($type['doc_price'], 2) . "</td>
-                            <td>{$statusBadge}</td>
-                            <td>
-                                <button class='btn btn-sm btn-primary me-1' onclick=\"openEditModal({$type['doc_type_id']}, '{$type['doc_name']}', {$type['doc_price']})\">
-                                    <i class='bi bi-pencil'></i> Edit
-                                </button>
-                                <a href='?toggle_status={$type['doc_type_id']}' class='btn btn-sm btn-{$toggleColor}' title='Toggle Status'>
-                                    <i class='bi bi-{$toggleIcon}'></i> Toggle
-                                </a>
-                            </td>
-                        </tr>";
-                    }
-                    ?>
-                </tbody>
-            </table>
+             <div class="custom-card">
+                <h4 class="mb-3 text-primary">Document Types & Prices</h4>
+                <?php
+                // Display success message if exists
+                if (isset($_SESSION['success_message'])) {
+                    echo "<div class='alert alert-success alert-dismissible fade show' role='alert'>
+                            <i class='bi bi-check-circle-fill me-1'></i> {$_SESSION['success_message']}
+                            <button type='button' class='btn-close' data-bs-dismiss='alert' aria-label='Close'></button>
+                          </div>";
+                    unset($_SESSION['success_message']);
+                }
+                ?>
+                
+                <div class="table-responsive">
+                    <table class="table table-hover table-sm table-dark-blue">
+                        <thead class="table-dark-blue">
+                            <tr>
+                                <th>Document Name</th>
+                                <th>Price</th>
+                                <th>Status</th>
+                                <th class="text-center">Action</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            <?php
+                            $stmt = $pdo->query("
+                                SELECT dt.*
+                                FROM document_types dt
+                                INNER JOIN (
+                                    SELECT doc_name, MAX(doc_type_id) AS max_id
+                                    FROM document_types
+                                    GROUP BY doc_name
+                                ) latest ON dt.doc_type_id = latest.max_id
+                                ORDER BY dt.doc_name ASC
+                            ");
+                            while ($type = $stmt->fetch()) {
+                                $statusBadge = $type['doc_status'] == 'Open' 
+                                    ? "<span class='badge bg-success'><i class='bi bi-check-circle'></i> Open</span>" 
+                                    : "<span class='badge bg-secondary'><i class='bi bi-x-circle'></i> Closed</span>";
+                                
+                                $toggleIcon = $type['doc_status'] == 'Open' ? 'toggle-on' : 'toggle-off';
+                                $toggleColor = $type['doc_status'] == 'Open' ? 'success' : 'secondary';
+                                
+                                // Assuming formatNumberShort() is defined in includes/config.php or elsewhere
+                                $priceDisplay = "₱" . (function_exists('formatNumberShort') ? formatNumberShort($type['doc_price'], 2) : number_format($type['doc_price'], 2));
+                                
+                                echo "<tr>
+                                    <td><strong>{$type['doc_name']}</strong></td>
+                                    <td>{$priceDisplay}</td>
+                                    <td>{$statusBadge}</td>
+                                    <td class='text-center text-nowrap'>
+                                        <button class='btn btn-sm btn-primary me-1' onclick=\"openEditModal({$type['doc_type_id']}, '{$type['doc_name']}', {$type['doc_price']})\" title='Edit Price'>
+                                            <i class='bi bi-pencil'></i>
+                                        </button>
+                                        <a href='?toggle_status={$type['doc_type_id']}' class='btn btn-sm btn-{$toggleColor}' title='Toggle Status'>
+                                            <i class='bi bi-{$toggleIcon}'></i>
+                                        </a>
+                                    </td>
+                                </tr>";
+                            }
+                            ?>
+                        </tbody>
+                    </table>
+                </div>
+            </div>
         </div>
     </div>
 </div>
 
-<!-- Edit Price Modal -->
-<div class="modal fade" id="editPriceModal" tabindex="-1">
+<div class="modal fade" id="editPriceModal" tabindex="-1" aria-labelledby="editPriceModalLabel" aria-hidden="true">
     <div class="modal-dialog modal-dialog-centered">
         <div class="modal-content">
             <div class="modal-header bg-primary text-white">
-                <h5 class="modal-title"><i class="bi bi-pencil-square"></i> Edit Document Price</h5>
-                <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
+                <h5 class="modal-title" id="editPriceModalLabel">
+                    <i class="bi bi-pencil-square me-2"></i> Edit Document Price
+                </h5>
+                <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="Close"></button>
             </div>
             <form method="POST">
                 <div class="modal-body">
                     <input type="hidden" name="doc_type_id" id="edit_doc_type_id">
+                    
                     <div class="mb-3">
-                        <label class="form-label fw-bold">Document Name</label>
-                        <input type="text" class="form-control" id="edit_doc_name" readonly>
+                        <label for="edit_doc_name" class="form-label fw-bold">Document Name</label>
+                        <input type="text" class="form-control" id="edit_doc_name" readonly aria-describedby="docNameHelp">
+                        <div id="docNameHelp" class="form-text">Changing the document name is not allowed here.</div>
                     </div>
+                    
                     <div class="mb-3">
-                        <label for="edit_price" class="form-label fw-bold">Price (₱)</label>
-                        <input type="number" step="0.01" min="0" class="form-control form-control-lg" 
-                               id="edit_price" name="price" required>
+                        <label for="edit_price" class="form-label fw-bold">New Price (₱)</label>
+                        <input type="number" step="0.01" min="0" class="form-control form-control-lg border-primary" 
+                               id="edit_price" name="price" required placeholder="0.00">
+                    </div>
+                    
+                    <div class="alert alert-info py-2" role="alert" style="font-size: 0.9rem;">
+                        <i class="bi bi-info-circle me-1"></i> Note: This action creates a new price record, effectively "closing" the old price.
                     </div>
                 </div>
                 <div class="modal-footer">
                     <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">
-                        <i class="bi bi-x-circle"></i> Cancel
+                        <i class="bi bi-x-circle me-1"></i> Cancel
                     </button>
                     <button type="submit" name="update_price" class="btn btn-primary">
-                        <i class="bi bi-check-circle"></i> Update Price
+                        <i class="bi bi-check-circle me-1"></i> Update Price
                     </button>
                 </div>
             </form>
         </div>
     </div>
 </div>
+
 
 <script>
 function openEditModal(docTypeId, docName, currentPrice) {
@@ -344,20 +378,7 @@ function openEditModal(docTypeId, docName, currentPrice) {
 }
 
 function confirmDelete(typeName) {
-    return confirm('Are you sure yo u want to delete the document type: ' + typeName + '?');
-}
-
-function previewTemplate(type) {
-    // Set modal title based on type
-    const title = type === 'clearance' ? 'Barangay Clearance Template' : 'Barangay Indigency Template';
-    document.getElementById('previewTitle').textContent = title;
-    
-    // Set iframe source
-    document.getElementById('previewFrame').src = 'preview_template.php?type=' + type;
-    
-    // Open modal
-    const modal = new bootstrap.Modal(document.getElementById('previewModal'));
-    modal.show();
+    return confirm('Are you sure you want to delete the document type: ' + typeName + '?');
 }
 
 function preventEnterSubmit(event) {
@@ -368,14 +389,6 @@ function preventEnterSubmit(event) {
     }
 }
 
-function handleOfficialsSubmit(event) {
-    // Show confirmation before submitting
-    if (!confirm('Are you sure you want to save the changes to barangay officials?')) {
-        event.preventDefault();
-        return false;
-    }
-    return true;
-}
 </script>
 
 <?php include 'footer.php'; ?>

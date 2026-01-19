@@ -1,7 +1,7 @@
 <?php
 // Database configuration
 define('DB_HOST', 'localhost');
-define('DB_NAME', 'bdis');
+define('DB_NAME', 'beta_bdis');
 define('DB_USER', 'root'); // Default XAMPP user
 define('DB_PASS', ''); // Default XAMPP password
 
@@ -14,11 +14,7 @@ try {
     die("Database connection failed: " . $e->getMessage());
 }
 
-
 // Start session only if one doesn't exist
-// if (session_status() === PHP_SESSION_NONE) {
-    
-// }
 if (session_status() === PHP_SESSION_NONE) {
     session_start();
 
@@ -28,11 +24,7 @@ if (session_status() === PHP_SESSION_NONE) {
 function isLoggedIn() {
     return isset($_SESSION['user_id']);
 }
-
-
-
 function sanitize($data) {
-    // Also strip out any potential NUL characters which can cause issues with BLOB binding
     return htmlspecialchars(trim(str_replace("\0", '', $data)), ENT_QUOTES, 'UTF-8');
 }
 function getUserRole() {
@@ -49,7 +41,6 @@ if (!function_exists('mask_phone')) {
         return str_repeat('*', max(0, $len - 4)) . substr($s, -4);
     }
 }
-
 if (!function_exists('mask_email')) {
     function mask_email($email) {
         $email = trim((string)$email);
@@ -75,10 +66,9 @@ function redirectIfNotLoggedIn() {
         exit;
     }
 }
-
 function redirectIfNotRole($role) {
     if (getUserRole() !== $role) {
-        header('Location: /Project_A2/unauthorized.php');
+        header('Location: /Project_A2/index.php');
         exit;
     }
 }
@@ -100,7 +90,6 @@ function redirectIfNotResident() {
 function logActivity($actor_id, $action, $details = []) {
     global $pdo;
 
-    // 🧩 Fetch actor info
     $stmt = $pdo->prepare("
         SELECT u.first_name, u.surname, ur.role
         FROM users u
@@ -118,7 +107,6 @@ function logActivity($actor_id, $action, $details = []) {
     $action_sentence = '';
     $log_detail = '';
 
-    // 🧠 Smart detection: role change
     if (str_contains($action_clean, 'change role') || str_contains($action_clean, 'changed role')) {
         $target_id = $details['target_user_id'] ?? null;
         $new_role = ucfirst($details['new_role'] ?? 'Unknown');
@@ -143,7 +131,6 @@ function logActivity($actor_id, $action, $details = []) {
         $action = "Changed user role";
     }
 
-    // 🧩 Simpler actions
     elseif (preg_match('/\b(log ?in|logged ?in)\b/i', $action_clean)) {
         $action_sentence = "$actor_name logged into the system.";
         $log_detail = "logged into the system";
@@ -179,14 +166,12 @@ function logActivity($actor_id, $action, $details = []) {
         }
     }
 
-    // 🧩 Fallback
     else {
         $action_sentence = "$actor_name performed the action: " . ucfirst($action) . ".";
         $log_detail = "performed the action: " . ucfirst($action);
         $action = ucfirst($action);
     }
 
-    // 🪵 Store clean detail
     $stmt = $pdo->prepare("
         INSERT INTO activity_logs (user_id, action, action_details, action_time)
         VALUES (?, ?, ?, NOW())
@@ -195,10 +180,25 @@ function logActivity($actor_id, $action, $details = []) {
 }
 
 
-/**
- * Fetches required barangay address details for auto-filling forms.
- * Returns an array with default values if fetching fails.
- */
+if (!function_exists('fetchUserName')) {
+    function fetchUserName($pdo, $userId) {
+        if (empty($userId)) return 'Unknown User';
+        try {
+            $stmt = $pdo->prepare("SELECT first_name, surname FROM users WHERE user_id = ? LIMIT 1");
+            $stmt->execute([$userId]);
+            $u = $stmt->fetch(PDO::FETCH_ASSOC);
+            if ($u) {
+                $first = trim($u['first_name'] ?? '');
+                $last  = trim($u['surname'] ?? '');
+                $name = trim(($first . ' ' . $last));
+                return $name !== '' ? $name : 'Unknown User';
+            }
+        } catch (Throwable $e) {
+        }
+        return 'Unknown User';
+    }
+}
+
 function getBarangayDetails() {
     global $pdo;
     try {
@@ -229,7 +229,6 @@ function getBarangayDetails() {
             ];
         }
     } catch (PDOException $e) {
-        // Fall through to defaults
     }
 
     return [
@@ -246,14 +245,11 @@ function getBarangayDetails() {
 
 
 function getbrgyName($role = '') {
-    // Get barangay details
     $barangay = getBarangayDetails();
     $barangayName = $barangay['brgy_name'] ?? 'BDIS';
 
-    // Optional role text
     $roleText = $role ? ucfirst($role) . ' - ' : '';
 
-    // Build the HTML with just the barangay name
     $html = '<div class="d-flex align-items-center">';
     $html .= '<div>';
     $html .= '<div class="fw-bold">' . htmlspecialchars($barangayName) . '</div>';
@@ -267,7 +263,6 @@ function getbrgyName($role = '') {
 }
 
 function getNavbarBrand($role = '') {
-    // ... (This function remains unchanged as it is not used in the register flow)
     $barangay = getBarangayDetails();
     $barangayName = $barangay['brgy_name'] ?? 'BDIS';
     $municipality = $barangay['municipality'] ?? '';
@@ -276,7 +271,6 @@ function getNavbarBrand($role = '') {
     
     $roleText = $role ? ucfirst($role) . ' - ' : '';
     
-    // Build the location text
     $locationParts = array_filter([$barangayName, $municipality, $province]);
     $locationText = implode(', ', $locationParts);
     
@@ -300,8 +294,7 @@ function Logo($context = 'default') {
     if ($context === 'sidebar') {
         return '<img src="' . $logoSrc . '" alt="Logo">';
     }
-    
-    // For other uses (like navbar), use smaller size
+
     return '<img src="' . $logoSrc . '" alt="Logo" style="height: 80px; width: auto;">';
 }
 
@@ -319,6 +312,17 @@ if (!function_exists('formatNumberShort')) {
             return $number;
         }
     }
+}
+
+function createNotification($user_id, $notif_type, $notif_topic, $notif_entity_id = null) {
+    global $pdo;
+    
+    $stmt = $pdo->prepare("
+        INSERT INTO notifications (user_id, notif_type, notif_topic, notif_entity_id, notif_created_at) 
+        VALUES (?, ?, ?, ?, NOW())
+    ");
+    
+    return $stmt->execute([$user_id, $notif_type, $notif_topic, $notif_entity_id]);
 }
 ?>
 

@@ -16,16 +16,12 @@ class DocumentGenerator {
         $this->templatesPath = __DIR__ . '/../templates/';
         $this->outputPath = __DIR__ . '/../uploads/generated_documents/';
         $this->assetsPath = __DIR__ . '/../assets/images/';
-        
-        // Create output directory if it doesn't exist
+
         if (!file_exists($this->outputPath)) {
             mkdir($this->outputPath, 0755, true);
         }
     }
     
-    /**
-     * Helper function to get full name from request data
-     */
     private function getFullName($request) {
         if ($request['first_name'] && $request['surname']) {
             $firstName = ucwords(strtolower($request['first_name']));
@@ -75,10 +71,8 @@ class DocumentGenerator {
         $request['brgy_logo_src'] = $barangayDetails['brgy_logo_src'];
         $request['city_logo_src'] = $barangayDetails['city_logo_src'];
         
-        // Set default captain name (can be customized later)
         $request['captain_name'] = 'HON. RENATO B. MARTIN';
         
-        // Generate the document based on type using HTML templates
         switch ($request['doc_type_name']) {
             case 'Barangay Clearance':
                 return $this->generateFromHTMLTemplate($request, 'barangay_clearance.html');
@@ -97,7 +91,6 @@ class DocumentGenerator {
         $officials = [];
         
         try {
-            // Get Captain (Punong Barangay)
             $stmt = $this->pdo->prepare("
                 SELECT u.first_name, u.middle_name, u.surname
                 FROM users u 
@@ -116,7 +109,6 @@ class DocumentGenerator {
                 $officials['Captain'] = 'Punong Barangay Name';
             }
             
-            // Get Councilors (Kagawad)
             $stmt = $this->pdo->prepare("
                 SELECT u.first_name, u.middle_name, u.surname
                 FROM users u 
@@ -127,19 +119,17 @@ class DocumentGenerator {
             $stmt->execute();
             $councilors = $stmt->fetchAll(PDO::FETCH_ASSOC);
             
-            // Fill councilor positions (up to 7)
             for ($i = 0; $i < 7; $i++) {
                 if (isset($councilors[$i])) {
                     $firstName = ucwords(strtolower($councilors[$i]['first_name']));
                     $middleName = $councilors[$i]['middle_name'] ? ucwords(strtolower($councilors[$i]['middle_name'])) . ' ' : '';
                     $surname = ucwords(strtolower($councilors[$i]['surname']));
-                    $officials['Councilor_' . ($i + 1)] = trim($firstName . ' ' . $middleName . $surname);
+                    $officials['Councilor_' . ($i + 1)] = trim('Hon. ' . $firstName . ' ' . $middleName . $surname);
                 } else {
-                    $officials['Councilor_' . ($i + 1)] = 'Kagawad Name';
+                    $officials['Councilor_' . ($i + 1)] = '';
                 }
             }
             
-            // Get SK Chairman
             $stmt = $this->pdo->prepare("
                 SELECT u.first_name, u.middle_name, u.surname
                 FROM users u 
@@ -158,7 +148,6 @@ class DocumentGenerator {
                 $officials['SK_CHAIRMAN'] = 'SK Chairman Name';
             }
             
-            // Get Treasurer
             $stmt = $this->pdo->prepare("
                 SELECT u.first_name, u.middle_name, u.surname
                 FROM users u 
@@ -177,7 +166,6 @@ class DocumentGenerator {
                 $officials['TREASURER'] = 'Treasurer Name';
             }
             
-            // Get Secretary
             $stmt = $this->pdo->prepare("
                 SELECT u.first_name, u.middle_name, u.surname
                 FROM users u 
@@ -197,7 +185,6 @@ class DocumentGenerator {
             }
             
         } catch (Exception $e) {
-            // If there's any error, use default values
             $officials = [
                 'Captain' => 'Punong Barangay Name',
                 'Councilor_1' => 'Kagawad Name',
@@ -220,7 +207,6 @@ class DocumentGenerator {
      * Generate HTML from template (no PDF generation)
      */
     private function generateFromHTMLTemplate($request, $templateFile) {
-        // Load HTML template
         $templatePath = $this->templatesPath . $templateFile;
         
         if (!file_exists($templatePath)) {
@@ -229,7 +215,6 @@ class DocumentGenerator {
         
         $html = file_get_contents($templatePath);
         
-        // Calculate age
         $age = 'N/A';
         if ($request['birthdate']) {
             $birthDate = new DateTime($request['birthdate']);

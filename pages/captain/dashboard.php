@@ -8,18 +8,16 @@
         <?php
         // general stats
         $stats = [
-            'pending_signature' => $pdo->query("SELECT COUNT(*) FROM document_requests WHERE request_status = 'for-signing'")->fetchColumn(),
-            'signed_documents' => $pdo->query("SELECT COUNT(*) FROM document_requests WHERE request_status = 'ready'")->fetchColumn(),
+            'pending_signature' => $pdo->query("SELECT COUNT(*) FROM document_requests WHERE request_status = 'printed'")->fetchColumn(),
+            'signed_documents' => $pdo->query("SELECT COUNT(*) FROM document_requests WHERE request_status = 'signed'")->fetchColumn(),
             'completed_documents' => $pdo->query("SELECT COUNT(*) FROM document_requests WHERE request_status = 'completed'")->fetchColumn(),
             'total_documents' => $pdo->query("SELECT COUNT(*) FROM document_requests")->fetchColumn(),
-            'active_schedules' => $pdo->query("SELECT COUNT(*) FROM schedule WHERE schedule_date >= CURDATE()")->fetchColumn(),
             'my_requests' => $pdo->query(" SELECT COUNT(*) FROM document_requests WHERE resident_id = {$_SESSION['user_id']}")->fetchColumn()
         ];
         ?>
 
 <!-- FETCHERs -->
  <?php
-
  //revenue stat
                         $currentMonth = date('Y-m');
                         
@@ -29,18 +27,18 @@
                             FROM document_requests dr 
                             JOIN document_types dt ON dr.doc_type_id = dt.doc_type_id 
                             WHERE DATE_FORMAT(dr.date_requested, '%Y-%m') = ? 
-                            AND dr.request_status IN ('printed', 'signed', 'completed')
+                            AND dr.request_status IN ('completed')
                         ");
                         $stmt->execute([$currentMonth]);
                         $monthlyIncome = $stmt->fetch()['monthly_income'];
                         
        
                         $stmt = $pdo->query("
-                            SELECT COALESCE(SUM(dt.doc_price), 0) as weekly_income 
-                            FROM document_requests dr 
-                            JOIN document_types dt ON dr.doc_type_id = dt.doc_type_id 
-                            WHERE YEARWEEK(dr.date_requested, 1) = YEARWEEK(CURDATE(), 1)
-                            AND dr.request_status IN ('printed', 'signed', 'completed')
+                            SELECT SUM(dt.doc_price) AS weekly_income
+                            FROM document_requests dr
+                            JOIN document_types dt ON dr.doc_type_id = dt.doc_type_id
+                            WHERE dr.request_status = 'completed'
+                            AND dr.date_requested >= DATE(NOW() - INTERVAL 7 DAY)
                         ");
                         $weeklyIncome = $stmt->fetch()['weekly_income'];
             
@@ -49,16 +47,16 @@
                             FROM document_requests dr 
                             JOIN document_types dt ON dr.doc_type_id = dt.doc_type_id 
                             WHERE DATE(dr.date_requested) = CURDATE()
-                            AND dr.request_status IN ('printed', 'signed', 'completed')
+                            AND dr.request_status IN ('completed')
                         ");
                         $dailyIncome = $stmt->fetch()['daily_income'];
                         
                         // Total revenue
                         $stmt = $pdo->query("
-                             SELECT COALESCE(SUM(dt.doc_price), 0) as total_revenue 
-                            FROM document_requests dr 
-                            JOIN document_types dt ON dr.doc_type_id = dt.doc_type_id 
-                            WHERE dr.request_status IN ('printed', 'signed', 'completed')
+                           SELECT SUM(dt.doc_price) AS total_revenue
+                          FROM document_requests dr
+                          JOIN document_types dt ON dr.doc_type_id = dt.doc_type_id
+                          WHERE dr.request_status = 'completed'
                         ");
                         $totalRevenue = $stmt->fetch()['total_revenue'];
                         ?>
@@ -119,8 +117,6 @@ $totalData = $monthlyData;
 $totalLabels = $monthlyLabels;
 ?>
 
-
-
 <style>
 .stat-card {
   border-radius: 16px;
@@ -137,13 +133,10 @@ $totalLabels = $monthlyLabels;
   --bs-gutter-x: 0.75rem;
   --bs-gutter-y: 0.75rem;
 }
-
-
 .stat-card:hover {
   transform: translateY(-3px);
   box-shadow: 0 6px 16px rgba(0, 0, 0, 0.08);
 }
-
 .stat-header {
   font-weight: 600;
   font-size: 0.8rem;
@@ -151,13 +144,11 @@ $totalLabels = $monthlyLabels;
   justify-content: space-between;
   align-items: center;
 }
-
 .stat-body {
   font-size:2.5rem;
   font-weight: 700;
   margin: 0.5rem 0;
 }
-
 .stat-footer {
   font-size: .7rem;
   color: #000;
@@ -165,7 +156,6 @@ $totalLabels = $monthlyLabels;
   align-items: center;
   gap: 0.25rem;
 }
-
 .stat-icon {
   width: 24px;
   height: 22px;
@@ -176,27 +166,21 @@ $totalLabels = $monthlyLabels;
   align-items: center;
   color: #000;
 }
-
 .bg-green-gradient {
   background: linear-gradient(135deg, #2e7d32, #388e3c);
   color: #fff;
 }
-
-
 #revenueChart {
   width: 100% !important;
   height: 100% !important;
   min-height: 350px;
 }
-
 .chart-container {
   position: relative;
   width: 100%;
   height: 400px;
   max-height: 400px;
 }
-
-
 .chart-filter {
   cursor: pointer;
   transition: transform 0.15s ease, box-shadow 0.15s ease;
@@ -295,16 +279,16 @@ $totalLabels = $monthlyLabels;
   <div class="col-md-3">
     <div class="stat-card border border-dark bg-white">
       <div class="stat-header">
-        <span>Active Schedule</span>
+        <span>My Requests</span>
         <span class="stat-icon">
           <i class="fa fa-level-up"></i>
         </span>
       </div>
       <div class="stat-body text-black">
-        <?php echo $stats['active_schedules']; ?>
+        <?php echo $stats['my_requests']; ?>
       </div>
       <div class="stat-footer text-black">
-          Open slots available for residents
+          Total documents you requested
       </div>
     </div>
   </div>
@@ -383,73 +367,8 @@ $totalLabels = $monthlyLabels;
   </div>
 </div>
 
-
-
-
-
-
-
-
-
-
-
-
-
 <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
 <script>
-// const chartDataSets = {
-//   monthly: [12000, 15000, 13000, 18000, 21000, 19000],
-//   weekly: [2000, 2500, 3000, 4000, 3500, 3700, 3900],
-//   daily: [500, 800, 600, 900, 1200, 1100, 1000],
-//   total: [150000, 155000, 160000, 170000, 180000, 200000]
-// };
-
-// const ctx = document.getElementById('revenueChart').getContext('2d');
-// let revenueChart = new Chart(ctx, {
-//   type: 'line',
-//   data: {
-//     labels: ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun'],
-//     datasets: [{
-//       label: 'Revenue',
-//       data: chartDataSets.monthly,
-//       borderColor: '#0d6efd',
-//       backgroundColor: 'rgba(13,110,253,0.1)',
-//       fill: true,
-//       tension: 0.3
-//     }]
-//   },
-//   options: {
-//     responsive: true,
-//     maintainAspectRatio: false,
-//     plugins: { legend: { display: false } },
-//     scales: { y: { beginAtZero: true } }
-//   }
-// });
-
-// // === INTERACTION HANDLER ===
-// document.querySelectorAll('.chart-filter').forEach(card => {
-//   card.addEventListener('click', () => {
-//     // Remove old active
-//     document.querySelectorAll('.chart-filter').forEach(c => c.classList.remove('active'));
-//     // Add new active
-//     card.classList.add('active');
-
-//     const filter = card.getAttribute('data-filter');
-//     const labels = filter === 'daily'
-//       ? ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun']
-//       : ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun'];
-
-//     // Update chart data
-//     revenueChart.data.labels = labels;
-//     revenueChart.data.datasets[0].data = chartDataSets[filter];
-//     revenueChart.update();
-
-//     // Update title
-//     document.getElementById('chartTitle').textContent =
-//       filter.charAt(0).toUpperCase() + filter.slice(1) + ' Revenue Trend';
-//   });
-// });
-
 
 const chartDataSets = {
   monthly: <?php echo json_encode($monthlyData); ?>,
@@ -548,8 +467,4 @@ document.querySelectorAll('.chart-filter').forEach(card => {
   });
 });
 </script>
-
-
-   
-
 <?php include 'footer.php'; ?>

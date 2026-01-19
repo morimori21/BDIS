@@ -17,6 +17,21 @@ use PHPMailer\PHPMailer\Exception;
 // --- SET TIMEZONE TO ASIA/MANILA (GMT +8) ---
 date_default_timezone_set('Asia/Manila');
 
+// --- DEFAULT PROFILE PICTURE BLOB SETUP ---
+// Reads the binary data of the default avatar for BLOB insertion.
+// NOTE: Create an 'images' folder in this directory and place your default image (e.g., default_resident.png) inside.
+$default_avatar_path = __DIR__ . '/uploads/default_resident.jpg'; 
+$default_avatar_blob = null;
+
+if (file_exists($default_avatar_path)) {
+    // Read the entire file content into a variable for BLOB storage
+    $default_avatar_blob = file_get_contents($default_avatar_path);
+} else {
+    // If the default image is missing, the column must be able to accept NULL.
+    error_log("CRITICAL ERROR: Default avatar image not found at " . $default_avatar_path);
+}
+// --- END DEFAULT PROFILE PICTURE BLOB SETUP ---
+
 $email = sanitize($_REQUEST['email'] ?? '');
 $error_message = '';
 $success_message = '';
@@ -131,9 +146,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && empty($error_message)) {
         $address_id = $addrStmt->fetchColumn();
         if (!$address_id) { $address_id = 1; }
 
-        // 3. Insert into users table (Core Resident Data - without email)
+        // 3. Insert into users table (Core Resident Data - using BLOB for profile picture)
         $user_fields = ['first_name', 'middle_name', 'surname', 'suffix', 
-                        'contact_number', 'birthdate', 'sex', 'street', 'address_id', 'remarks', 'profile_picture'];
+                         'contact_number', 'birthdate', 'sex', 'street', 'address_id', 'remarks', 'profile_picture'];
         $placeholders = implode(', ', array_fill(0, count($user_fields), '?'));
         $sql = "INSERT INTO users (" . implode(', ', $user_fields) . ") VALUES ($placeholders)";
         $stmt = $pdo->prepare($sql);
@@ -143,7 +158,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && empty($error_message)) {
             $data['suffix'], $data['contact_number'], $data['birthdate'], $data['sex'], $data['street'],
             $address_id,
             'New registration', // Default remarks
-            'default-avatar.png' // Default profile picture
+            $default_avatar_blob // INSERTING BLOB DATA FROM ABOVE
         ]);
 
         $user_id = $pdo->lastInsertId();
@@ -161,7 +176,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && empty($error_message)) {
     // 6. Insert into id_verification (ID and Status Data)
         // Assuming verification_status is a column in id_verification
         $stmt = $pdo->prepare("INSERT INTO id_verification (user_id, id_type, front_img, back_img)
-                              VALUES (?, ?, ?, ?)"); 
+                             VALUES (?, ?, ?, ?)"); 
 
         $stmt->bindParam(1, $user_id, PDO::PARAM_INT);
         $stmt->bindParam(2, $data['id_type'], PDO::PARAM_STR);

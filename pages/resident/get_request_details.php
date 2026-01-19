@@ -5,8 +5,6 @@ redirectIfNotResident();
 
 if (isset($_GET['id'])) {
     $request_id = $_GET['id'];
-    
-    // Only allow residents to view their own requests
     $stmt = $pdo->prepare("
         SELECT dr.*, dt.doc_name as doc_type_name, dt.doc_price
         FROM document_requests dr 
@@ -16,8 +14,10 @@ if (isset($_GET['id'])) {
     $stmt->execute([$request_id, $_SESSION['user_id']]);
     $request = $stmt->fetch();
     
+    // Always return JSON
+    header('Content-Type: application/json');
+    
     if ($request) {
-        // Get user information using the correct column names from the database
         try {
             $userStmt = $pdo->prepare("SELECT first_name, middle_name, surname, contact_number, birthdate, sex, street, address_id FROM users WHERE user_id = ?");
             $userStmt->execute([$_SESSION['user_id']]);
@@ -30,7 +30,6 @@ if (isset($_GET['id'])) {
                 $birthdate = $user['birthdate'] ? date('F j, Y', strtotime($user['birthdate'])) : 'Not provided';
                 $age = $user['birthdate'] ? date_diff(date_create($user['birthdate']), date_create('today'))->y : 'Not available';
                 
-                // Get address from address table using address_id
                 if ($user['address_id']) {
                     try {
                         $addressStmt = $pdo->prepare("SELECT brgy_name, municipality, province FROM address_config WHERE address_id = ?");
@@ -65,7 +64,6 @@ if (isset($_GET['id'])) {
             $age = 'Error';
         }
 
-        // Get email from email table using correct relationship
         try {
             $emailStmt = $pdo->prepare("
                 SELECT e.email 
@@ -83,31 +81,22 @@ if (isset($_GET['id'])) {
         $docType = htmlspecialchars($request['doc_type_name']);
         $reason = htmlspecialchars($request['request_purpose'] ?? '');
         $requestDate = date('F j, Y g:i A', strtotime($request['date_requested']));
-        $pickupDate = isset($request['pickup_date']) && $request['pickup_date'] ? date('F j, Y', strtotime($request['pickup_date'])) : 'Not set';
-        $price = '₱' . number_format($request['doc_price'], 2);
+        $price = '₱' . formatNumberShort($request['doc_price'], 2);
+        $pickupDisplay = !empty($request['pickup_representative']) ? htmlspecialchars($request['pickup_representative']) : 'Not set';
         
-        // Get pickup schedule details if available
-        $pickupDisplay = $pickupDate;
-        if (!empty($request['schedule_id'])) {
-            $sstmt = $pdo->prepare("SELECT schedule_date FROM schedule WHERE schedule_id = ?");
-            $sstmt->execute([$request['schedule_id']]);
-            $sch = $sstmt->fetch();
-            if ($sch) {
-                $pickupDisplay = date('F j, Y', strtotime($sch['schedule_date']));
-            }
-        }
-        
-        // Handle pickup representative
         $pickupInfo = '';
         if (!empty($request['pickup_representative'])) {
             $pickupInfo = htmlspecialchars($request['pickup_representative']);
         }
         
-        // Status badge styling
         $statusBadge = '';
         switch(strtolower($request['request_status'] ?? 'pending')) {
             case 'completed':
                 $statusBadge = '<span class="badge bg-success">Completed</span>';
+                break;
+            case 'cancelled':
+            case 'canceled':
+                $statusBadge = '<span class="badge bg-secondary">Cancelled</span>';
                 break;
             case 'ready':
                 $statusBadge = '<span class="badge bg-success">Ready</span>';
@@ -136,6 +125,8 @@ if (isset($_GET['id'])) {
                 break;
         }
         
+        // Build HTML content into a buffer to return via JSON
+        ob_start();
         echo "
         <div class='container-fluid p-0'>
             <div class='card border-0 shadow-sm'>
@@ -204,18 +195,9 @@ if (isset($_GET['id'])) {
                                     <div class='col-7'>$requestDate</div>
                                 </div>
                                 <div class='row mb-2'>
-                                    <div class='col-5'><strong>Pickup Date:</strong></div>
+                                    <div class='col-5'><strong>Pickup Representative:</strong></div>
                                     <div class='col-7'>$pickupDisplay</div>
                                 </div>";
-                                
-        // Only show pickup representative if there is one
-        if (!empty($request['pickup_representative'])) {
-            echo "
-                                <div class='row mb-2'>
-                                    <div class='col-5'><strong>Pickup Representative:</strong></div>
-                                    <div class='col-7'>$pickupInfo</div>
-                                </div>";
-        }
         
         echo "
                                 <div class='row mb-0'>
@@ -226,29 +208,106 @@ if (isset($_GET['id'])) {
                         </div>
                     </div>";
         
-        // Show remarks if available
-        if (!empty($request['request_remarks'])) {
-            echo "
+        // Determine remarks based on status
+        $statusKey = strtolower($request['request_status'] ?? 'pending');
+        $remarks = '';
+        $remarksRaw = trim((string)($request['request_remarks'] ?? ''));
+        
+        switch ($statusKey) {
+            case 'pending':
+                $remarks = 'Your Have Requested A Document, awaiting for approval';
+                break;
+            case 'in-progress':
+                $remarks = 'Your Requested Document has been approved and waiting to be printed';
+                break;
+            case 'printed':
+            case 'for-signing':
+                $remarks = 'Your Document is printed, waiting for Barangay Captain to sign it.';
+                break;
+            case 'signed':
+                $remarks = 'Your document is signed and ready for pickup';
+                break;
+            case 'completed':
+                $remarks = 'The Document is already Received';
+                break;
+            case 'rejected':
+                // Show the rejection reason from remarks
+                if ($remarksRaw !== '') {
+                    // Avoid double prefix if already saved with label
+                    if (stripos($remarksRaw, 'Reason of Rejection') === 0) {
+                        $remarks = $remarksRaw;
+                    } else {
+                        $remarks = 'Reason of Rejection: ' . $remarksRaw;
+                    }
+                } else {
+                    $remarks = 'Reason of Rejection: Not specified';
+                }
+                break;
+            case 'cancelled':
+            case 'canceled':
+                // Show the cancellation reason from remarks
+                if ($remarksRaw !== '') {
+                    // Check if it already has "Cancellation Reason:" prefix
+                    if (stripos($remarksRaw, 'Cancellation Reason:') !== false) {
+                        // Extract everything from "Cancellation Reason:" onwards
+                        preg_match('/Cancellation Reason:\s*(.+)/i', $remarksRaw, $matches);
+                        $remarks = 'Cancellation Reason: ' . (isset($matches[1]) ? trim($matches[1]) : 'Not specified');
+                    } else if (stripos($remarksRaw, 'Reason of Cancelation') === 0 || stripos($remarksRaw, 'Reason of Cancellation') === 0) {
+                        // Convert old format to new format
+                        $remarks = preg_replace('/^Reason of Cancell?ation:\s*/i', 'Cancellation Reason: ', $remarksRaw);
+                    } else {
+                        $remarks = 'Cancellation Reason: ' . $remarksRaw;
+                    }
+                } else {
+                    $remarks = 'Cancellation Reason: Not specified';
+                }
+                break;
+            default:
+                $remarks = $remarksRaw ? $remarksRaw : 'No additional remarks';
+                break;
+        }
+        
+        // Always show remarks section
+        echo "
                     <div class='mt-4'>
                         <h6 class='text-primary mb-3 fw-bold'>
                             <i class='bi bi-chat-text me-2'></i>Additional Remarks
                         </h6>
                         <div class='bg-light p-3 rounded'>
-                            <p class='mb-0 text-muted'>" . htmlspecialchars($request['request_remarks']) . "</p>
+                            <p class='mb-0 text-muted'>" . htmlspecialchars($remarks) . "</p>
                         </div>
                     </div>";
-        }
         
         echo "
                 </div>
             </div>
         </div>";
-        
-        
+        // Capture and return JSON
+        $html_content = ob_get_clean();
+        echo json_encode([
+            'html' => $html_content,
+            'status' => $request['request_status'] ?? 'pending',
+            'request_id' => $request_id
+        ]);
+        return;
     } else {
-        echo "<div class='alert alert-danger'><i class='bi bi-exclamation-triangle me-2'></i>Request not found or you don't have permission to view this request.</div>";
+        // Not found or unauthorized - return JSON with message HTML
+        $html_content = "<div class='alert alert-danger'><i class='bi bi-exclamation-triangle me-2'></i>Request not found or you don't have permission to view this request.</div>";
+        echo json_encode([
+            'html' => $html_content,
+            'status' => 'not-found',
+            'request_id' => $request_id
+        ]);
+        return;
     }
 } else {
-    echo "<div class='alert alert-danger'><i class='bi bi-exclamation-triangle me-2'></i>Invalid request ID.</div>";
+    header('Content-Type: application/json');
+    $html_content = "<div class='alert alert-danger'><i class='bi bi-exclamation-triangle me-2'></i>Invalid request ID.</div>";
+    echo json_encode([
+        'html' => $html_content,
+        'status' => 'invalid',
+        'request_id' => null
+    ]);
+    return;
 }
 ?>

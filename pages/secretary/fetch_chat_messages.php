@@ -53,8 +53,18 @@ $messages = $stmt->fetchAll(PDO::FETCH_ASSOC);
 
 // Process profile pictures
 foreach ($messages as &$msg) {
-    if ($msg['profile_picture']) {
-        $msg['profile_picture'] = '/Project_A2/uploads/' . $msg['profile_picture'];
+    if (!empty($msg['profile_picture'])) {
+        // Check if it's a BLOB (binary data) or a file path
+        if (is_string($msg['profile_picture']) && strpos($msg['profile_picture'], "\0") !== false) {
+            // It's a BLOB - convert to base64
+            $finfo = finfo_open(FILEINFO_MIME_TYPE);
+            $mime = finfo_buffer($finfo, $msg['profile_picture']);
+            finfo_close($finfo);
+            $msg['profile_picture'] = 'data:' . $mime . ';base64,' . base64_encode($msg['profile_picture']);
+        } else {
+            // It's a file path
+            $msg['profile_picture'] = '/Project_A2/uploads/' . $msg['profile_picture'];
+        }
     } else {
         $msg['profile_picture'] = '/Project_A2/assets/images/default-avatar.png';
     }

@@ -1,20 +1,17 @@
 <?php
-// Activity Logs Page — Collapsible modules (all expanded by default)
-// Paste/replace your existing activity logs file with this.
-
 include 'header.php';
 require_once '../../includes/config.php';
+date_default_timezone_set('Asia/Manila');
 
 if (!isset($_SESSION['user_id'])) {
     header('Location: /Project_A2/login.php');
     exit;
 }
-
 $currentUserId = $_SESSION['user_id'];
 $userRole = $_SESSION['role'] ?? 'user';
-$isAdmin = ($userRole === 'admin'); // only admin sees all logs
+$isAdmin = ($userRole === 'admin'); 
 
-// Module classification (auto-detect from action + details)
+// Module classification)
 function classifyModule($action, $details = '') {
     $text = strtolower($action . ' ' . $details);
 
@@ -54,17 +51,21 @@ if ($search) {
 }
 
 if ($date) {
+    // --- START: PHT SQL FILTER ADJUSTMENTS ---
     if ($date === 'WEEK') {
-        $wherePieces[] = "al.action_time >= DATE_SUB(NOW(), INTERVAL 7 DAY)";
+        $sevenDaysAgo = date('Y-m-d H:i:s', strtotime('-7 days'));
+        $wherePieces[] = "al.action_time >= :sevenDaysAgo";
+        $params[':sevenDaysAgo'] = $sevenDaysAgo;
     } elseif ($date === 'MONTH') {
-        $wherePieces[] = "MONTH(al.action_time) = MONTH(CURDATE()) AND YEAR(al.action_time) = YEAR(CURDATE())";
+        $startOfMonth = date('Y-m-01 00:00:00');
+        $wherePieces[] = "al.action_time >= :startOfMonth";
+        $params[':startOfMonth'] = $startOfMonth;
     } else {
         $wherePieces[] = "DATE(al.action_time) = :date";
         $params[':date'] = $date;
     }
 }
 
-// Apply user filter (unless admin)
 if (!$isAdmin) {
     $wherePieces[] = "al.user_id = :uid";
     $params[':uid'] = $currentUserId;
@@ -75,8 +76,6 @@ if (!empty($wherePieces)) {
     $whereSQL = 'WHERE ' . implode(' AND ', $wherePieces);
 }
 
-// --- Fetch all matching logs (so we can compute accurate module counts and groupings) ---
-// Note: if your dataset is extremely large, we can change this to server-side pagination per module.
 $fetchSql = "
     SELECT al.*, u.first_name, u.surname, ur.role, u.profile_picture
     FROM activity_logs al
@@ -88,26 +87,24 @@ $fetchSql = "
 
 $fetchStmt = $pdo->prepare($fetchSql);
 foreach ($params as $k=>$v) {
-    // use INT for uid, strings otherwise
     if ($k === ':uid') $fetchStmt->bindValue($k, $v, PDO::PARAM_INT);
     else $fetchStmt->bindValue($k, $v, PDO::PARAM_STR);
 }
 $fetchStmt->execute();
 $allLogs = $fetchStmt->fetchAll(PDO::FETCH_ASSOC);
 
-// Group logs into modules -> dates
 $grouped = [];
+$todayPHT = date('j F Y'); 
 foreach ($allLogs as $log) {
     $module = classifyModule($log['action'] ?? '', $log['action_details'] ?? '');
     $dateLabel = date('j F Y', strtotime($log['action_time']));
-    if ($dateLabel == date('j F Y')) $dateLabel = 'Today';
+    if ($dateLabel == $todayPHT) $dateLabel = 'Today';
 
     if (!isset($grouped[$module])) $grouped[$module] = [];
     if (!isset($grouped[$module][$dateLabel])) $grouped[$module][$dateLabel] = [];
     $grouped[$module][$dateLabel][] = $log;
 }
 
-// Module counts (total items per module)
 $module_counts = [];
 foreach ($module_order as $m) {
     $module_counts[$m] = isset($grouped[$m]) ? array_sum(array_map('count', $grouped[$m])) : 0;
@@ -160,7 +157,9 @@ foreach ($module_order as $m) {
             <div class="d-flex flex-wrap justify-content-start align-items-center pt-2">
                 <span class="me-3 mb-2 fw-semibold">Quick Filters:</span>
                 <?php
-                // Defining quick filters manually since the stat computation is removed
+                $today_pht = date('Y-m-d');
+                $yesterday_pht = date('Y-m-d', strtotime('-1 day'));
+                
                 $quick_filters = [
                     'today' => 'Today',
                     'yesterday' => 'Yesterday',
@@ -168,15 +167,24 @@ foreach ($module_order as $m) {
                     'MONTH' => 'This Month',
                 ];
                 ?>
-                <?php foreach ($quick_filters as $key => $label): ?>
-                    <button type="button" class="btn btn-sm btn-outline-info me-2 mb-2 clickable-filter <?= ($date === $key) ? 'active' : '' ?>" data-filter="<?= $key ?>">
+                <?php foreach ($quick_filters as $key => $label): 
+                    $dataDate = '';
+                    if ($key === 'today') $dataDate = $today_pht;
+                    if ($key === 'yesterday') $dataDate = $yesterday_pht;
+
+                    $isActive = ($date === $key || $date === $dataDate);
+                ?>
+                    <button type="button" 
+                            class="btn btn-sm btn-outline-info me-2 mb-2 clickable-filter <?= $isActive ? 'active' : '' ?>" 
+                            data-filter="<?= $key ?>"
+                            data-date="<?= htmlspecialchars($dataDate) ?>">
                         <?= htmlspecialchars($label) ?>
                     </button>
                 <?php endforeach; ?>
             </div>
             
         </div>
-    </div>
+        </div>
     
     <div class="card mb-4">
         <div class="card-body p-0">
@@ -185,7 +193,7 @@ foreach ($module_order as $m) {
             ?>
                 <div class="module-block mb-0 border-bottom" data-module="<?= htmlspecialchars($moduleName) ?>">
                     <div class="module-header d-flex justify-content-between align-items-center p-3"
-                          role="button" aria-expanded="true">
+                              role="button" aria-expanded="true">
                         <div class="d-flex align-items-center">
                             <span class="module-arrow me-2">▼</span>
                             <strong class="me-2"><?= htmlspecialchars($moduleName) ?></strong>
@@ -232,15 +240,15 @@ foreach ($module_order as $m) {
                                     echo '<div class="d-flex justify-content-between flex-column flex-sm-row">'; // Added flex-column for mobile
                                     echo '<div><span class="fw-semibold">' . $formattedName . '</span> <small class="text-muted d-block d-sm-inline">· ' . htmlspecialchars($role) . '</small></div>'; // d-block on mobile
                                     echo '<div><small class="text-muted">' . htmlspecialchars($time) . '</small></div>';
-                                    echo '</div>'; // end header
+                                    echo '</div>'; 
                                     echo '<div class="mt-1"><strong>' . $action . '</strong></div>';
                                     if ($details) echo '<div class="text-muted small mt-1">' . $details . '</div>';
-                                    echo '</div>'; // end middle
+                                    echo '</div>';
 
-                                    echo '</div>'; // end list-item
+                                    echo '</div>'; 
                                 }
-                                echo '</div>'; // end list-group
-                                echo '</div>'; // end date-group
+                                echo '</div>';
+                                echo '</div>'; 
                             }
                         }
                         ?>
@@ -253,7 +261,6 @@ foreach ($module_order as $m) {
 </div>
 
 <script>
-    // Helper function to clear the current filter and reload
     function clearDateFilter() {
         const url = new URL(window.location);
         url.searchParams.delete('date');
@@ -276,12 +283,10 @@ foreach ($module_order as $m) {
             header.addEventListener('click', () => {
                 const isVisible = body.style.display !== 'none';
                 if (isVisible) {
-                    // collapse
                     body.style.display = 'none';
                     arrow.textContent = '▶';
                     header.setAttribute('aria-expanded', 'false');
                 } else {
-                    // expand
                     body.style.display = 'block';
                     arrow.textContent = '▼';
                     header.setAttribute('aria-expanded', 'true');
@@ -289,10 +294,12 @@ foreach ($module_order as $m) {
             });
         });
 
-        // --- Quick Filter Button Clicks: Filter by Date ---
+        // --- Quick Filter Button Clicks: Filter by Date (UPDATED for PHT) ---
         document.querySelectorAll('.clickable-filter').forEach(button => {
             button.addEventListener('click', () => {
                 const filter = button.dataset.filter;
+                // NEW: Get the PHT date calculated by PHP
+                const dataDate = button.dataset.date; 
                 const currentUrl = new URL(window.location);
                 
                 // Clear existing date/date_input first
@@ -301,13 +308,9 @@ foreach ($module_order as $m) {
                 
                 let dateParam = filter;
 
-                if (filter === 'today') {
-                    // Convert 'today' filter to a specific date for consistent handling on PHP side
-                    dateParam = new Date().toISOString().split('T')[0];
-                } else if (filter === 'yesterday') {
-                    const d = new Date();
-                    d.setDate(d.getDate() - 1);
-                    dateParam = d.toISOString().split('T')[0];
+                if (dataDate) {
+                    // Use the PHT date provided by PHP for 'today' and 'yesterday'
+                    dateParam = dataDate;
                 }
                 
                 currentUrl.searchParams.set('date', dateParam);
@@ -321,14 +324,13 @@ foreach ($module_order as $m) {
             flatpickr(datePickerElement, {
                 dateFormat: "Y-m-d",
                 allowInput: true,
-                // The form submission handles the filtering
             });
             
             // If a specific date is set in the URL, ensure the form input reflects it
             const url = new URL(window.location);
             const dateInput = url.searchParams.get('date');
             if(dateInput && dateInput !== 'WEEK' && dateInput !== 'MONTH') {
-                 datePickerElement._flatpickr.setDate(dateInput, true); 
+                datePickerElement._flatpickr.setDate(dateInput, true); 
             }
         }
         
@@ -345,7 +347,6 @@ foreach ($module_order as $m) {
 </script>
 
 <style>
-    /* Basic Styles (kept from original) */
     .module-header {
         background: #ffffff;
         border: 1px solid #e9ecef;
@@ -369,14 +370,10 @@ foreach ($module_order as $m) {
         justify-content:center; 
         border-radius:50%; 
     }
-
-/* Quick Filter Button Styles */
         .clickable-filter.active {
             background-color: var(--bs-info);
             color: white;
         }
-
-        /* Module Block Separators */
         .module-block:last-child {
             border-bottom: none !important;
         }
@@ -384,8 +381,6 @@ foreach ($module_order as $m) {
             border: none !important;
             border-radius: 0 !important;
         }
-
-/* Mobile Adjustments */
     @media (max-width: 767.98px) { 
         .container {
             padding-left: 10px;
@@ -401,26 +396,22 @@ foreach ($module_order as $m) {
             padding: 8px 15px !important;
             font-size: 0.9rem;
         }
-        /* Adjust text alignment for better mobile stacking */
         .list-item .flex-grow-1 .d-flex {
-            align-items: flex-start !important; /* ensure proper vertical alignment */
+            align-items: flex-start !important; 
         }
     }
     @media (min-width: 992px) { 
         .container {
-            max-width: 1000px !important; /* Set a fixed max width for desktop */
+            max-width: 1000px !important;
             margin-left: auto !important;
             margin-right: auto !important;
         }
     }
-
-    /* ... existing mobile adjustments ... */
     @media (max-width: 767.98px) { 
         .container {
             padding-left: 10px;
             padding-right: 10px;
         }
-        /* ... other mobile styles ... */
     }
 </style>
 

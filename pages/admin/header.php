@@ -1,25 +1,75 @@
 <?php
 require_once '../../includes/config.php';
-redirectIfNotLoggedIn();
-redirectIfNotRole('admin');
-
+if(!isset($_SESSION['user_id'])){
+    header('location: /Project_A2/login.php');
+    
+}
 $stmt = $pdo->prepare("
-    SELECT 
-        u.first_name,
-        u.middle_name,
-        u.surname,
-        u.profile_picture,
-        e.email
-    FROM users u
-    INNER JOIN account a ON a.user_id = u.user_id
-    INNER JOIN email e ON e.email_id = a.email_id
-    WHERE u.user_id = ?
+    SELECT
+        u.user_id,
+        p.passkey,
+        COALESCE(ur.role, 'user') AS role,
+        u.status
+    FROM
+        users u
+    JOIN
+        account a ON u.user_id = a.user_id
+    JOIN
+        password p ON a.password_id = p.password_id
+    LEFT JOIN
+        user_roles ur ON u.user_id = ur.user_id
+    WHERE
+        u.user_id = ?
+    ");
+    $stmt->execute([$_SESSION['user_id']]);
+    $user = $stmt->fetch();
+$role = $user['role'] ?? 'user';
+$isAdmin = ($role === 'admin');
+if(!$isAdmin){
+    header('location: /Project_A2/index.php');
+}
+// fetch user info and profile img for header drop menu
+$stmt = $pdo->prepare("
+    SELECT first_name, middle_name, surname, profile_picture
+    FROM users
+    WHERE user_id = ?
 ");
 $stmt->execute([$_SESSION['user_id']]);
-$user = $stmt->fetch(PDO::FETCH_ASSOC);
+$headerUser = $stmt->fetch(PDO::FETCH_ASSOC);
+$profileImage = "";
+if(!empty($headerUser['profile_picture'])){
+    $profileImage = 'data:image/png;base64,' . base64_encode($headerUser['profile_picture']);
+}
+global $pdo;
+$logoStmt = $pdo->query("SELECT brgy_logo FROM address_config LIMIT 1");
+$logoData = $logoStmt->fetch(PDO::FETCH_ASSOC);
+$logoImage = "";
+if (!empty($logoData['brgy_logo'])){
+    $logoImage = 'data:image/png;base64,' . base64_encode($logoData['brgy_logo']);
+}
+// Get email from email table using correct relationship
+if ($headerUser) {
+    try {
+        $emailStmt = $pdo->prepare("
+            SELECT e.email 
+            FROM email e 
+            JOIN account a ON e.email_id = a.email_id 
+            WHERE a.user_id = ?
+        ");
+        $emailStmt->execute([$_SESSION['user_id']]);
+        $emailResult = $emailStmt->fetch();
+        $headerUser['email'] = $emailResult ? $emailResult['email'] : '';
+    } catch (PDOException $e) {
+        $headerUser['email'] = '';
+    }
+}
+
+// Build display name
+$username = $headerUser['first_name'] 
+            . (!empty($headerUser['middle_name']) ? ' ' . $headerUser['middle_name'] : '') 
+            . ' ' . $headerUser['surname'];
 
 ?>
-
 
 <!DOCTYPE html>
 <html lang="en">
@@ -29,33 +79,102 @@ $user = $stmt->fetch(PDO::FETCH_ASSOC);
     <title>BDIS - Admin Dashboard</title>
     <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
     <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.0/font/bootstrap-icons.css">
-    <link rel="stylesheet" href="../../assets/css/sidebar.css?v=<?php echo time(); ?>">
-    <link rel="stylesheet" href="../../assets/css/old_style.css?v=<?php echo time(); ?>">
-    <script src="../../assets/js/global.js?v=<?php echo time(); ?>"></script>
-    <script>
-        // Auto-hide any success alerts after 1 second (admin pages)
-        document.addEventListener('DOMContentLoaded', function() {
-            setTimeout(function() {
-                document.querySelectorAll('.alert.alert-success').forEach(function(el){
-                    if (!el) return;
-                    try {
-                        if (window.bootstrap && bootstrap.Alert) {
-                            var alert = bootstrap.Alert.getOrCreateInstance(el);
-                            alert.close();
-                        } else {
-                            el.classList.remove('show');
-                            el.parentNode && el.parentNode.removeChild(el);
-                        }
-                    } catch (e) {
-                        el.classList.remove('show');
-                        el.parentNode && el.parentNode.removeChild(el);
-                    }
-                });
-            }, 1000);
-        });
-    </script>
     <style>
-        /* profile dropdown */
+        body {
+            background: #f8f9fa !important;
+            color: #333;
+            overflow-x: hidden;
+        }
+        body::-webkit-scrollbar, html::-webkit-scrollbar {
+            display: none;
+        }
+        .sidebar-wrapper {
+            
+            width: 260px;
+            height: 100vh;
+            background: #fff;
+            position: fixed;
+            left: 0;
+            top: 0;
+            border-right: 1px solid #e5e7eb;
+            padding-top: 20px;
+            transition: 0.3s ease;
+            z-index: 1000;
+            over
+        }
+
+        .sidebar-wrapper.minimized {
+            width: 70px;
+        }
+        .sidebar-wrapper .nav-link {
+            color: #333 !important;
+            padding: 12px 15px;
+            font-weight: 500;
+            border-radius: 8px;
+        }
+        .sidebar-wrapper .nav-link:hover,
+        .sidebar-wrapper .nav-link.active {
+            background: #e9ecef !important;
+            color: #0d6efd !important;
+            box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15) !important; /* subtle shadow on hover/active */
+        }
+        .sidebar-wrapper.minimized .nav-link span,
+        .sidebar-wrapper.minimized .sidebar-title {
+            display: none !important;
+        }
+        @media (max-width: 991px) {
+            .sidebar-wrapper {
+                left: -260px;
+            }
+            .sidebar-wrapper.mobile-open {
+                left: 0;
+            }
+        }
+        .main-content {
+            margin-left: 260px;
+            padding: 90px 20px 20px 20px;
+            transition: 0.3s ease;
+        }
+        .main-content.expanded {
+            margin-left: 70px;
+        }
+
+        @media (max-width: 991px) {
+            .main-content {
+                margin-left: 0 !important;
+            }
+        }
+        .sidebar-wrapper,
+        .main-content,
+        .navbar {
+            transition: all 0.3s ease;
+        }
+        .navbar {
+            position: fixed;
+            top: 0;
+            left: 260px;
+            right: 0;
+            padding: 10px 20px;
+            background: #fff !important;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.05);
+            transition: 0.3s ease;
+            z-index: 900;
+        }
+        .navbar.expanded {
+            left: 70px;
+        }
+        @media (max-width: 991px) {
+            .navbar {
+                left: 0 !important;
+            }
+        }
+        .burger-btn {
+            font-size: 1.8rem;
+            cursor: pointer;
+            margin-right: 15px;
+            z-index: 1100;           
+            position: relative;      
+        }
         .sub-menu-wrap{
             position: absolute;
             top:100%;
@@ -115,178 +234,292 @@ $user = $stmt->fetch(PDO::FETCH_ASSOC);
         .profile-dropdown {
             position: relative;
             display: inline-block;
-            margin-right: 20px;
+        }
+        .navbar .navbar-brand {
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
+            font-size: 1rem;
+        }
+        .rounded-circle{
+            width:40px;
+            height:40px;
+        }
+        @media (max-width: 991px) {
+            
+            .navbar .navbar-brand {
+                            white-space: nowrap;
+                font-size: 0.9rem;
+                max-width: 120px;
+            }
+            .sidebar-wrapper {
+                left: auto;
+                right: -260px;
+            }
+            .sidebar-wrapper.mobile-open {
+                left: 0;
+            }
+            .main-content.mobile-open {
+                margin-left: 260px; 
+            }
+            .navbar.mobile-open {
+                left: 260px; 
+            }
         }
         
-        .main-content {
-            padding-top: 0;
+        @media (max-width: 575px) {
+            .sidebar-logo img{
+            width: 20px;
+            height: 20px; 
+            }
+            .navbar .navbar-brand {
+                font-size: 0.8rem;
+                max-width: 100px;
+            }
+            .rounded-circle{
+            width:35px;height:35px;
+        }
+        }
+        .notif-badge {
+            position: absolute;
+            top: -5px;
+            right: -5px;
+            background: red;
+            color: #fff;
+            font-size: 0.7rem;
+            font-weight: bold;
+            padding: 2px 6px;
+            border-radius: 50%;
+        }
+        .sidebar-title{
+            padding: 5px;
+            text-align: center;
+        }
+        .notif-menu-wrap {
+            position: absolute;
+            top: 120%;
+            right: 0;
+            width: 300px;
+            max-height: 0;
+            overflow: hidden;
+            transition: max-height 0.4s ease;
+            z-index: 999;
         }
 
-        .navbar {
-            margin-bottom: 0;
-            margin-top: 0;
-            padding: 0.75rem 1rem;
-            box-shadow: 0 2px 4px rgba(0, 0, 0, 0.08);
-            z-index: 1000;
+        .notif-menu-wrap.open-menu {
+            max-height: 400px;
         }
 
-        .navbar-brand {
-            font-size: 1.1rem;
-            font-weight: 600;
+        .notif-menu {
+            background: #fff;
+            border-radius: 8px;
+            box-shadow: 0 4px 12px rgba(0,0,0,0.15);
+            padding: 15px;
         }
-    </style>
-</head>
-<body>
-    <!-- Sidebar -->
-    <div class="sidebar-wrapper d-flex flex-column">
-        <div class="sidebar-header">
-            <div class="sidebar-logo">
-                <?php echo Logo('sidebar'); ?>
-            </div>
-            <h4 class="sidebar-title">BDIS</h4>
-        </div>
-            
-            <div class="sidebar-nav">
-                <ul class="nav flex-column">
-                    <li class="nav-item">
-                        <a href="/Project_A2/pages/admin/dashboard.php" class="nav-link">
-                            <i class="bi bi-speedometer2"></i>
-                            <span>Dashboard</span>
-                        </a>
-                    </li>
-                    <li class="nav-item">
-                        <a href="/Project_A2/pages/admin/user_management.php" class="nav-link">
-                            <i class="bi bi-people"></i>
-                            <span>User Management</span>
-                        </a>
-                    </li>
-                    <li class="nav-item">
-                        <a href="/Project_A2/pages/admin/user_verification.php" class="nav-link">
-                            <i class="bi bi-check-circle"></i>
-                            <span>User Verification</span>
-                        </a>
-                    </li>
-                    <li class="nav-item">
-                        <a href="/Project_A2/pages/admin/system_configuration.php" class="nav-link">
-                            <i class="bi bi-gear"></i>
-                            <span>System Configuration</span>
-                        </a>
-                    </li>
-                    <li class="nav-item">
-                        <a href="/Project_A2/pages/admin/activity_logs.php" class="nav-link">
-                            <i class="bi bi-journal-text"></i>
-                            <span>Activity Logs</span>
-                        </a>
-                    </li>
-                </ul>
-            </div>
-            
-            <div class="sidebar-footer">
-                <ul class="nav flex-column">
-                    <li class="nav-item">
-                        <a href="/Project_A2/pages/admin/support_tickets.php" class="nav-link">
-                            <i class="bi bi-ticket-perforated"></i>
-                            <span>Support Tickets</span>
-                        </a>
-                    </li>
-                </ul>
-            </div>
-        </div>
-    </div>
-    
-    <!-- Main Content -->
-    <div class="main-content">
-        <nav class="navbar navbar-expand-lg navbar-light bg-light">
-            <div class="container-fluid">
-                <span class="navbar-brand"><?php echo getNavbarBrand('admin'); ?></span>
-                
-                    <!-- Profile Dropdown -->
-                    <div class="profile-dropdown position-relative" onclick="toggleMenu(event)" style="cursor: pointer; user-select: none;">
-                        <div class="d-flex align-items-center gap-2">
-                            <?php if (!empty($user['profile_picture'])): ?>
-                                <img 
-                                    src="/Project_A2/uploads/<?php echo htmlspecialchars($user['profile_picture']); ?>" 
-                                    alt="Profile Picture"
-                                    class="rounded-circle"
-                                    style="width: 40px; height: 40px; object-fit: cover; border: 2px solid #f1f1f1;"
-                                >
-                            <?php else: ?>
-                                <div class="rounded-circle bg-secondary d-flex align-items-center justify-content-center"
-                                    style="width: 40px; height: 40px;">
-                                    <i class="bi bi-person-fill text-white"></i>
-                                </div>
-                            <?php endif; ?>
 
-                            <div class="d-flex flex-column align-items-start">
-                                <span class="fw-semibold">
-                                    <?php echo ucwords(htmlspecialchars($user['first_name'] ?? 'User')); ?>
-                                </span>
-                                <span class="badge bg-danger">
-                                    Admin
-                                </span>
-                            </div>
-                        </div>
-                        
-                        <div class="sub-menu-wrap" id="subMenu">
-                            <div class="sub-menu">
-                                <div class="user-info">
-                                    <?php if (!empty($user['profile_picture'])): ?>
-                                        <img src="/Project_A2/uploads/<?php echo htmlspecialchars($user['profile_picture']); ?>"
-                                            alt="Profile"
-                                            class="rounded-circle me-2"
-                                            style="width: 50px; height: 50px; object-fit: cover;">
-                                    <?php else: ?>
-                                        <div class="rounded-circle bg-secondary d-flex align-items-center justify-content-center me-2"
-                                            style="width: 50px; height: 50px;">
-                                            <i class="bi bi-person-fill text-white"></i>
-                                        </div>
-                                    <?php endif; ?>
-                                    <h6 class="ms-2 mb-0"><?php echo htmlspecialchars($user['first_name'] . ' ' . $user['surname'] ?? 'User'); ?></h6>
-                                </div>
+        .notif-item {
+            display: block;
+            padding: 10px 8px;
+            text-decoration: none;
+            color: #333;
+            border-radius: 6px;
+            margin-bottom: 5px;
+            transition: all 0.2s ease;
+        }
 
-                                <hr>
-                                <a href="/Project_A2/pages/admin/profile.php" class="sub-menu-link">
-                                    <i class="bi bi-person-circle"></i>
-                                    <p>Profile</p>
-                                    <span>›</span>
-                                </a>
-                                <!-- Settings removed -->
-                                <hr>
-                                <a href="../../logout.php" class="sub-menu-link" style="color:red;">
-                                    <i class="bi bi-box-arrow-right"></i>
-                                    <p>Logout</p>
-                                    <span>›</span>
-                                </a>
-                            </div>
-                        </div>
-                    </div>
-                </div>
-            </nav>
+        .notif-item:hover {
+            background: #f3f4f6;
+        }
 
-<script>
-    const subMenu = document.getElementById("subMenu");
-
-    function toggleMenu(event) {
-        event.stopPropagation(); 
-        subMenu.classList.toggle("open-menu");
+        .notif-item.unread {
+            background: #e7f1ff;
+        }
+        .sidebar-logo img {
+            width: 70px;        
+            height: 70px;        
+            border-radius: 50%;   
+            object-fit: cover;    
+            display: block;
+            margin: 0 auto;      
+        }
+        @media (max-width: 575px) {
+    .notif-menu-wrap {
+        position: fixed !important;
+        top: 70px !important;
+        right: 0 !important;
+        left: 0 !important;
+        width: 92% !important;
+        margin: 0 auto !important;
+        z-index: 2000 !important;
+    }
+    .notif-menu-wrap.open-menu {
+        max-height: 450px !important;
     }
 
-    document.addEventListener("click", function(event) {
-        const profileDropdown = document.querySelector(".profile-dropdown");
-        if (!profileDropdown.contains(event.target)) {
-            subMenu.classList.remove("open-menu");
+    .notif-menu {
+        padding: 12px !important;
+    }
+
+    .notif-item {
+        font-size: 0.85rem;
+        padding: 8px;
+    }
+}
+    </style>
+</head>
+
+
+<body>
+    <!-- SIDEBAR -->
+    <div class="sidebar-wrapper minimized">
+        <div class="sidebar-header">
+                <?php if (!empty($logoImage)): ?>
+                <div class="sidebar-logo">
+                    <img src = "<?php echo $logoImage; ?>" alt = "Barangay Logo">
+                </div>
+                <?php endif; ?>
+                <h4 class="sidebar-title">BDIS</h4>
+        </div>
+        <ul class="nav flex-column ps-2 pe-2 mt-3 sidebar-nav">
+            <li class="nav-item">
+                <a href="/Project_A2/pages/admin/dashboard.php" class="nav-link">
+                    <i class="bi bi-speedometer2"></i> <span>Dashboard</span>
+                </a>
+            </li>
+
+            <li class="nav-item">
+                    <a href="/Project_A2/pages/admin/user_management.php" class="nav-link">
+                    <i class="bi bi-people"></i><span>User Management</span>
+                </a>
+            </li>
+
+
+            <li class="nav-item">
+                <a href="/Project_A2/pages/admin/system_configuration.php" class="nav-link">
+                    <i class="bi bi-gear"></i><span>System Configuration</span>
+                </a>
+            </li>
+        </ul>
+    </div>
+
+    <!-- NAVBAR -->
+    <nav class="navbar expanded navbar-expand-lg">
+        <i class="bi bi-list burger-btn" onclick="toggleSidebar()"></i>
+        <span class="navbar-brand"><?php echo getbrgyName('admin'); ?></span>
+        
+    <!-- Notifications -->
+    <div class="ms-auto"></div>
+
+        <!-- Profile -->
+        <div class="profile-dropdown position-relative" onclick="toggleMenu(event)">
+            <div class="d-flex align-items-center gap-2" style="cursor:pointer">
+                <?php if (!empty($headerUser['profile_picture'])): ?>
+                    <img src="<?php echo $profileImage; ?>" alt = "Profile Picture" class="rounded-circle" style="object-fit:cover;">
+                <?php else: ?>
+                    <div class="rounded-circle bg-secondary d-flex align-items-center justify-content-center">
+                        <i class="bi bi-person-fill text-white"></i>
+                    </div>
+                <?php endif; ?>
+
+                <div class="d-flex flex-column">
+                    <span class="fw-semibold"><?php echo ucwords(htmlspecialchars($headerUser['first_name'])); ?></span>
+                    <span class="badge bg-danger">Admin</span>
+                </div>
+            </div>
+
+            <div class="sub-menu-wrap" id="subMenu">
+                <div class="sub-menu">
+                    <a href="/Project_A2/pages/admin/profile.php" class="sub-menu-link">
+                        <i class="bi bi-person-circle me-2"></i> <p>Profile</p>
+                    </a>
+                    <hr>
+                    <a href="/Project_A2/pages/admin/activity_logs.php" class="sub-menu-link">
+                        <i class="bi bi-clipboard-data me-2"></i> <p> Activity Logs</p>
+                    </a>
+                    <hr>
+                    <a href="../../logout.php" class="sub-menu-link text-danger">
+                        <i class="bi bi-box-arrow-right me-2"></i> <p>Logout</p>
+                    </a>
+                </div>
+            </div>
+        </div>
+    </nav>
+
+
+<!-- MAIN CONTENT -->
+<div class="main-content">
+
+</div>
+
+<script>
+    // Burger menu toggle
+    
+function toggleSidebar() {
+    const sidebar = document.querySelector('.sidebar-wrapper');
+    const content = document.querySelector('.main-content');
+    const navbar = document.querySelector('.navbar');
+
+    if (window.innerWidth <= 991) {
+        sidebar.classList.toggle('mobile-open');
+        content.classList.toggle('mobile-open');
+        navbar.classList.toggle('mobile-open');
+        return;
+    }
+
+    if (sidebar.classList.contains('minimized')) {
+        sidebar.classList.remove('minimized');
+        content.classList.remove('expanded');
+        navbar.classList.remove('expanded');
+    } else {
+        sidebar.classList.add('minimized');
+        content.classList.add('expanded');
+        navbar.classList.add('expanded');
+    }
+}
+
+document.querySelector('.main-content').addEventListener('click', function() {
+    if (window.innerWidth <= 991) {
+        const sidebar = document.querySelector('.sidebar-wrapper');
+        sidebar.classList.remove('mobile-open');
+    }
+});
+
+// Profile dropdown only
+const subMenu = document.getElementById("subMenu");
+
+function toggleMenu(event) {
+    event.stopPropagation();
+    subMenu.classList.toggle("open-menu");
+}
+
+// Close profile menu when clicking outside
+document.addEventListener("click", function(event) {
+    const profileWrap = document.querySelector(".profile-dropdown");
+    if (!profileWrap.contains(event.target)) {
+        subMenu.classList.remove("open-menu");
+    }
+});
+
+// Auto minimize sidebar on desktop
+document.addEventListener('DOMContentLoaded', function() {
+    if (window.innerWidth > 991) {
+        document.querySelector('.sidebar-wrapper').classList.add('minimized');
+        document.querySelector('.main-content').classList.add('expanded');
+        document.querySelector('.navbar').classList.add('expanded');
+    }
+});
+
+// Sidebar active link highlight
+document.addEventListener('DOMContentLoaded', function() {
+    const currentPath = window.location.pathname;
+    document.querySelectorAll('.sidebar-nav .nav-link').forEach(link => {
+        if (link.getAttribute('href') === currentPath 
+            || currentPath.includes(link.getAttribute('href'))) {
+            link.classList.add('active');
         }
     });
-    
-    // Highlight active nav link
-    document.addEventListener('DOMContentLoaded', function() {
-        const currentPath = window.location.pathname;
-        document.querySelectorAll('.sidebar-nav .nav-link').forEach(link => {
-            if (link.getAttribute('href') === currentPath || 
-                currentPath.includes(link.getAttribute('href'))) {
-                link.classList.add('active');
-            }
-        });
-    });
-    
+});
 </script>
+
+</body>
+</html>

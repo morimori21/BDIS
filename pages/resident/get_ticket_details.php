@@ -10,7 +10,7 @@ if (!isset($_GET['ticket_id'])) {
 $ticket_id = intval($_GET['ticket_id']);
 $current_user_id = $_SESSION['user_id'];
 
-// ✅ Get Ticket Info (ensure the ticket belongs to this resident)
+// Get Ticket Info 
 $stmt = $pdo->prepare("
     SELECT 
         st.*, 
@@ -30,7 +30,7 @@ if (!$ticket) {
     exit('Ticket not found or access denied');
 }
 
-// ✅ Get Receivers (Staff/Secretary assigned to the ticket)
+// Get Receivers 
 $stmt = $pdo->prepare("
     SELECT 
         u.user_id,
@@ -95,11 +95,8 @@ $statusColor = $statusColors[$ticket['ticket_status']] ?? 'secondary';
 ?>
 
 <div class="row" style="height: 80vh;">
-    <!-- LEFT COLUMN: Chat -->
     <div class="col-lg-8 mb-4 h-100 d-flex flex-column">
-        <!-- Chat Section -->
         <div class="card flex-grow-1 d-flex flex-column position-relative" style="background-color: #f5f5f5;">
-            <!-- Chat Header with Ticket Subject -->
             <div class="card-header bg-white border-bottom" style="padding: 15px;">
                 <div class="d-flex justify-content-between align-items-center">
                     <div>
@@ -114,7 +111,6 @@ $statusColor = $statusColors[$ticket['ticket_status']] ?? 'secondary';
 
             <div class="card-body flex-grow-1 overflow-auto" id="chat-body" style="padding: 20px; background-color: #f5f5f5;">
                 <div id="chat-messages">
-                    <!-- Messages will be loaded here via AJAX -->
                     <p class="text-center text-muted">Loading messages...</p>
                 </div>
             </div>
@@ -311,7 +307,6 @@ $statusColor = $statusColors[$ticket['ticket_status']] ?? 'secondary';
     color: #666;
 }
 
-/* System messages (assignments, status changes) */
 .message-system {
     text-align: center;
     margin: 15px auto;
@@ -328,7 +323,6 @@ $statusColor = $statusColors[$ticket['ticket_status']] ?? 'secondary';
     border: 1px solid #bbdefb;
 }
 
-/* Scrollbar styling */
 #chat-body::-webkit-scrollbar {
     width: 6px;
 }

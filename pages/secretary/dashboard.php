@@ -1,6 +1,7 @@
 <?php include 'header.php'; ?>
 <link rel="stylesheet" href="path/to/font-awesome/css/font-awesome.min.css">
 <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/4.7.0/css/font-awesome.min.css">
+<link rel="stylesheet" href="global.css">
 
 
 <?php
@@ -327,7 +328,6 @@ for ($i = 0; $i < 7; $i++) {
 ?>
 
 <style>
-/* ===== DASHBOARD GRID LAYOUT ===== */
 .dashboard-grid {
   display: grid;
   grid-template-columns: 1fr 1fr 1fr;
@@ -338,8 +338,6 @@ for ($i = 0; $i < 7; $i++) {
   min-height: 500px;
   margin-top: 0.25rem;
 }
-
-/* ===== STAT CARD STYLES ===== */
 .stat-card {
   border-radius: 12px;
   padding: 1rem;
@@ -359,7 +357,6 @@ for ($i = 0; $i < 7; $i++) {
   box-shadow: 0 4px 12px rgba(0, 0, 0, 0.12);
 }
 
-/* ===== HEADER STYLES ===== */
 .stat-header {
   display: flex;
   justify-content: space-between;
@@ -541,8 +538,6 @@ for ($i = 0; $i < 7; $i++) {
   min-width: 50px;
   text-align: center;
 }
-
-/* ===== REQUEST OVERVIEW STYLES ===== */
 .request-overview-grid {
   display: grid;
   grid-template-columns: 1fr 1fr;
@@ -627,8 +622,6 @@ for ($i = 0; $i < 7; $i++) {
   background: #00b894;
   box-shadow: 0 0 0 3px rgba(0, 184, 148, 0.2);
 }
-
-/* ===== REVENUE STYLES ===== */
 .revenue-compact {
   display: flex;
   flex-direction: column;
@@ -751,8 +744,6 @@ for ($i = 0; $i < 7; $i++) {
   color: #2c3e50;
   line-height: 1;
 }
-
-/* Responsive adjustments for compact layout */
 @media (max-width: 768px) {
   .revenue-periods {
     gap: 0.4rem;
@@ -816,8 +807,6 @@ for ($i = 0; $i < 7; $i++) {
   font-weight: 500;
   line-height: 1.2;
 }
-
-/* ===== TICKET STYLES ===== */
 .ticket-layout {
   display: flex;
   flex-direction: column;
@@ -1021,8 +1010,6 @@ for ($i = 0; $i < 7; $i++) {
   text-align: right;
   font-size: 0.65rem;
 }
-
-/* ===== COMPACT NAVIGATION ===== */
 .nav-buttons .btn {
   border-radius: 12px;
   padding: 0.15rem 0.4rem;
@@ -1035,14 +1022,12 @@ for ($i = 0; $i < 7; $i++) {
   cursor: not-allowed;
 }
 
-/* ===== COMPACT FORM CONTROLS ===== */
 .form-select-sm {
   font-size: 0.7rem;
   padding: 0.2rem 0.4rem;
   height: 24px;
 }
 
-/* ===== RESPONSIVE ADJUSTMENTS ===== */
 @media (max-width: 768px) {
   .month-container-wrapper {
     min-height: 80px;
@@ -1073,7 +1058,6 @@ for ($i = 0; $i < 7; $i++) {
   }
 }
 
-/* ===== CHART STYLES ===== */
 .chart-container {
   position: relative;
   width: 100%;
@@ -1088,7 +1072,6 @@ for ($i = 0; $i < 7; $i++) {
   font-size: 0.9rem;
 }
 
-/* ===== FORM CONTROLS ===== */
 .form-select-sm {
   font-size: 0.75rem;
   padding: 0.25rem 0.5rem;
@@ -1111,7 +1094,6 @@ for ($i = 0; $i < 7; $i++) {
   cursor: not-allowed;
 }
 
-/* ===== UTILITY STYLES ===== */
 .mt-2 {
   margin-top: 12px;
 }
@@ -1168,7 +1150,6 @@ body {
   padding-top: 0;
 }
 
-/* ===== ANIMATIONS ===== */
 @keyframes slideIn {
   from {
     opacity: 0;
@@ -1187,7 +1168,6 @@ body {
 .month-item:nth-child(5) { animation-delay: 0.25s; }
 .month-item:nth-child(6) { animation-delay: 0.3s; }
 
-/* ===== RESPONSIVE DESIGN ===== */
 @media (max-width: 1200px) {
   .dashboard-grid {
     grid-template-columns: 1fr 1fr;
@@ -1370,7 +1350,6 @@ body {
   }
 }
 
-/* Ensure proper height distribution on very tall screens */
 @media (min-height: 800px) {
   .stat-card {
     min-height: 200px;
@@ -1386,7 +1365,6 @@ body {
   }
 }
 
-/* Animation for values */
 .metric-value {
   transition: all 0.3s ease;
 }
@@ -1460,8 +1438,13 @@ body {
     <div class="header-content">
       <span>Document Requests</span>
     </div>
+    <?php 
+    $percentage_ready = ($total_requests > 0) 
+        ? round(($ready_requests / $total_requests) * 100, 1) 
+        : 0;
+    ?>
     <div class="completion-badge">
-      <?= round(($ready_requests / $total_requests) * 100, 1) ?>% Ready
+      <?= $percentage_ready ?>% Ready
     </div>
   </div>
 

@@ -5,7 +5,6 @@
         padding: 20px;
         background: #fff;
     }
-
     #residentInfoModal .row > .col-5 {
         font-size: 14px;
     }
@@ -14,8 +13,6 @@
         font-size: 14px;
         font-weight: 600;
     }
-
-
     .resident-section-title {
         font-size: 14px;
         font-weight: bold;
@@ -23,20 +20,16 @@
         color: #555;
         margin-bottom: 6px;
     }
-
     .resident-info {
         font-size: 15px;
         font-weight: 600;
         margin-bottom: 10px;
     }
-
     .divider-line {
         width: 100%;
         border-bottom: 1px solid #d9d9d9;
         margin: 12px 0;
     }
-
-
     </style>
 
     <?php
@@ -52,7 +45,7 @@
         $user_id = (int)$_POST['user_id'];
 
         if ($action === 'verify') {
-            // ✅ Update status
+            // Update status
             $stmt = $pdo->prepare("UPDATE users SET status = 'verified', remarks = NULL WHERE user_id = ?");
             $stmt->execute([$user_id]);
 
@@ -66,7 +59,7 @@
             require_once '../../includes/config.php'; // or your actual file path
             logActivity($_SESSION['user_id'], 'approve user', ['target_user_id' => $user_id]);
 
-            // ✅ Fetch user info for email
+            //  Fetch user info for email
             $stmtUser = $pdo->prepare("SELECT first_name, surname, email FROM users u
                 LEFT JOIN account a ON u.user_id = a.user_id
                 LEFT JOIN email e ON a.email_id = e.email_id
@@ -84,15 +77,15 @@
                 $sent = sendAccountStatusEmail($to, $name, $status, $remarks_to_send);
 
                 $_SESSION['flash_' . ($sent ? 'success' : 'error')] =
-                    $sent ? "✅ User verified & 📧 email sent." : "✅ User verified, ❌ email failed.";
+                    $sent ? "User verified and email sent." : "User verified, email failed.";
             } else {
-                $_SESSION['flash_warning'] = "✅ User verified, ⚠ no email found.";
+                $_SESSION['flash_warning'] = "User verified, no email found.";
             }
 
         } elseif ($action === 'reject' && !empty($_POST['remarks'])) {
             $remarks = trim($_POST['remarks']);
 
-            // ✅ Update status
+            //  Update status
             $stmt = $pdo->prepare("UPDATE users SET status = 'rejected', remarks = ? WHERE user_id = ?");
             $stmt->execute([$remarks, $user_id]);
 
@@ -102,7 +95,7 @@
                 'remarks' => $remarks
             ]);
 
-            // ✅ Fetch user info
+            //  Fetch user info
             $stmtUser = $pdo->prepare("SELECT first_name, surname, email FROM users u
                 LEFT JOIN account a ON u.user_id = a.user_id
                 LEFT JOIN email e ON a.email_id = e.email_id
@@ -120,7 +113,7 @@
                 $sent = sendAccountStatusEmail($to, $name, $status, $remarks_to_send);
 
                 $_SESSION['flash_' . ($sent ? 'success' : 'error')] =
-                    $sent ? "❌ User rejected & 📧 email sent." : "❌ User rejected, email failed.";
+                    $sent ? "User rejected and email sent." : "User rejected, email failed.";
             } else {
                 $_SESSION['flash_warning'] = "❌ User rejected, ⚠ no email found.";
             }
@@ -129,9 +122,6 @@
         header("Location: " . $_SERVER['PHP_SELF']);
         exit;
     }
-
-
-
     // Fetch pending users
     $stmt = $pdo->query("
         SELECT 
@@ -276,28 +266,8 @@
 
     <div class="modal-body resident-card">
     <div class="row">
-        <!-- LEFT SIDE -->
+        <!-- LEFT SIDE: Personal Info -->
         <div class="col-6 border-end pe-4">
-            <div class="text-center fw-bold mb-2">ID TYPE</div>
-            <div class="text-center mb-3">
-                <span id="resIDType" class="fw-semibold"></span>
-            </div>
-
-            <!-- FRONT ID -->
-            <div class="text-center mb-3">
-                <img id="idFront" class="border rounded w-100" style="height:160px; object-fit:cover; background:#e5e5e5;">
-                <div class="fw-bold mt-2">Front ID</div>
-            </div>
-
-            <!-- BACK ID -->
-            <div class="text-center">
-                <img id="idBack" class="border rounded w-100" style="height:160px; object-fit:cover; background:#e5e5e5;">
-                <div class="fw-bold mt-2">Back ID</div>
-            </div>
-        </div>
-
-        <!-- RIGHT SIDE -->
-        <div class="col-6 ps-4">
 
             <div class="row mb-2">
                 <div class="col-5 fw-bold">Name:</div>
@@ -340,6 +310,26 @@
 
                 <div id="resRemarks" style="display:none;"></div>
 
+            </div>
+        </div>
+
+        <!-- RIGHT SIDE: ID Type and Images -->
+        <div class="col-6 ps-4">
+            <div class="text-center fw-bold mb-2">ID TYPE</div>
+            <div class="text-center mb-3">
+                <span id="resIDType" class="fw-semibold"></span>
+            </div>
+
+            <!-- FRONT ID -->
+            <div class="text-center mb-3">
+                <img id="idFront" class="border rounded w-100" style="height:160px; object-fit:cover; background:#e5e5e5;">
+                <div class="fw-bold mt-2">Front ID</div>
+            </div>
+
+            <!-- BACK ID -->
+            <div class="text-center">
+                <img id="idBack" class="border rounded w-100" style="height:160px; object-fit:cover; background:#e5e5e5;">
+                <div class="fw-bold mt-2">Back ID</div>
             </div>
         </div>
     </div>
@@ -388,14 +378,14 @@
             // parse JSON safely from attribute
             const u = JSON.parse(btn.getAttribute('data-user'));
 
-            // fill left (IDs)
+            // fill right (IDs)
             document.getElementById('resIDType').textContent = u.id_type || '';
 
             // images: use front_b64 / back_b64 (already base64-encoded by PHP)
             document.getElementById('idFront').src = u.front_b64 ? `data:image/jpeg;base64,${u.front_b64}` : '';
             document.getElementById('idBack').src  = u.back_b64  ? `data:image/jpeg;base64,${u.back_b64}`  : '';
 
-            // fill right (details)
+            // fill left (details)
             document.getElementById('resName').textContent = 
             `${u.first_name || ''} ${u.middle_name || ''} ${u.surname || ''} ${u.suffix || ''}`.replace(/\s+/g,' ').trim();
 

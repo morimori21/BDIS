@@ -20,8 +20,7 @@ if ($ticket_id <= 0) {
 }
 
 try {
-    // Mark all messages in this ticket as read where the current user is NOT the sender
-    // and the message is not yet read
+   
     $stmt = $pdo->prepare("
         UPDATE chat_messages 
         SET is_read = 1, read_at = CURRENT_TIMESTAMP 

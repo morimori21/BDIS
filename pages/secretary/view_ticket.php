@@ -27,8 +27,26 @@ if (isset($_POST['update_status'])) {
     exit;
 }
 
+
 $ticket_id = intval($_GET['ticket_id']);
 $current_user_id = $_SESSION['user_id'];
+
+// AUTO-CLOSE RESOLVED TICKETS AFTER 3 DAYS
+try {
+    $stmt = $pdo->prepare("
+        UPDATE support_tickets
+        SET ticket_status = 'closed'
+        WHERE ticket_status = 'resolved'
+          AND ticket_created_at <= DATE_SUB(NOW(), INTERVAL 3 DAY)
+    ");
+    
+    $stmt->execute();
+    
+    echo $stmt->rowCount() . " tickets automatically closed.\n";
+
+} catch (PDOException $e) {
+    echo "Error: " . $e->getMessage();
+}
 
 // Get Ticket Info
 $stmt = $pdo->prepare("
@@ -70,15 +88,14 @@ $markReadStmt->execute([$ticket_id, $current_user_id]);
 
 // Get all participants (resident + secretary)
 $stmt = $pdo->prepare("
-    SELECT 
-        u.user_id,
-        CONCAT(u.first_name, ' ', u.surname) AS full_name,
-        u.profile_picture,
-        ur.role
+    SELECT DISTINCT u.user_id,
+           CONCAT(u.first_name, ' ', u.surname) AS full_name,
+           u.profile_picture,
+           ur.role
     FROM users u
     JOIN user_roles ur ON u.user_id = ur.user_id
     WHERE u.user_id IN (
-        SELECT DISTINCT user_id FROM chat_messages WHERE ticket_id = :ticket_id
+        SELECT user_id FROM chat_messages WHERE ticket_id = :ticket_id
         UNION
         SELECT user_id FROM support_tickets WHERE ticket_id = :ticket_id
     )
@@ -264,7 +281,6 @@ include 'header.php';
 </div>
 
 <style>
-/* Chat Container Structure */
 .col-lg-8 .card {
     height: 80vh;
     max-height: 80vh;
@@ -283,7 +299,6 @@ include 'header.php';
     min-height: min-content;
 }
 
-/* Message Items */
 .message-item {
     display: flex;
     gap: 10px;
@@ -295,7 +310,6 @@ include 'header.php';
     flex-direction: row-reverse;
 }
 
-/* Message Avatar */
 .message-avatar {
     width: 40px;
     height: 40px;
@@ -306,7 +320,6 @@ include 'header.php';
     flex-shrink: 0;
 }
 
-/* Message Content */
 .message-content {
     max-width: 75%;
     display: flex;
@@ -398,7 +411,6 @@ include 'header.php';
     pointer-events: none;
 }
 
-/* Chat Footer */
 #chat-footer {
     position: sticky;
     bottom: 0;
@@ -407,7 +419,6 @@ include 'header.php';
     border-top: 1px solid #e9ecef;
 }
 
-/* Scrollbars */
 #chat-body {
     scrollbar-width: thin;
     scrollbar-color: #888 #f1f1f1;
@@ -430,8 +441,6 @@ include 'header.php';
 #chat-body::-webkit-scrollbar-thumb:hover {
     background: #555;
 }
-
-/* Animations */
 @keyframes fadeIn {
     from {
         opacity: 0;
@@ -508,11 +517,9 @@ include 'header.php';
 
     // Load messages
   function loadMessages() {
-    // Don't load messages if ticket is closed and we've already loaded them
+
     if (isLoadingMessages) return;
-    
-    // Optional: Stop auto-refresh for closed tickets after first load
-    // Auto-refresh messages every 3 seconds (only for open tickets)
+
 const isClosed = <?php echo $ticket['ticket_status'] === 'closed' ? 'true' : 'false'; ?>;
 if (!isClosed) {
     setInterval(loadMessages, 3000);
@@ -557,7 +564,7 @@ if (!isClosed) {
                 
                 scrollToBottom();
             } else if (isFirstLoad) {
-                // Show "no messages" only if there are truly no messages
+
                 chatContainer.innerHTML = '<p class="text-center text-muted py-4">No messages yet.</p>';
             }
         } else {
@@ -577,7 +584,6 @@ if (!isClosed) {
     });
 }
 
-    // Append message to chat
     // Append message to chat
 function appendMessage(msg) {
     const chatContainer = document.getElementById('chat-messages');
@@ -687,10 +693,7 @@ function appendMessage(msg) {
                     messageInput.style.height = 'auto';
                     messageInput.style.minHeight = '40px';
 
-                    // AUTO-UPDATE: Refresh page to show updated status
-                    setTimeout(() => {
-                        location.reload();
-                    }, 500);
+            
                     
                 } else {
                     alert(data.error || 'Failed to send message');

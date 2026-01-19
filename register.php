@@ -35,10 +35,6 @@ $logoImage = "";
 if (!empty($logoData['brgy_logo'])) {
     $logoImage = "data:image/png;base64," . base64_encode($logoData['brgy_logo']);
 }
-/* ---------------------------
-    END FETCH LOGO
----------------------------- */
-
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     try {
         // --- Basic User Info Retrieval & Sanitization ---
@@ -53,7 +49,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         $contact_number = sanitize($_POST['contact_number']);
         $birthdate = $_POST['birthdate'];
         $sex = sanitize($_POST['sex']);
-        $id_type = sanitize($_POST['id_type']);
+        $id_type = $_POST['id_type'];
         
         // --- Validation ---
         
@@ -83,18 +79,18 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             throw new Exception("Please fill in all required fields.");
         }
         
-        // 2. Password Match Validation
+   
         if ($plain_password !== $confirm_password) {
             throw new Exception("Password and Confirm Password do not match.");
         }
         $password = password_hash($plain_password, PASSWORD_DEFAULT);
 
-        // 3. Contact Number Validation (11-digit check)
+
         if (!preg_match('/^09[0-9]{9}$/', $contact_number)) {
             throw new Exception("Contact number must start with '09' and be exactly 11 numeric digits.");
         }
         
-        // 4. Email Uniqueness Check
+
         $stmt_check = $pdo->prepare("SELECT COUNT(*) FROM email WHERE email = ?");
         $stmt_check->execute([$email]);
         if ($stmt_check->fetchColumn() > 0) {
@@ -102,11 +98,11 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         }
 
 
-        // --- Handle ID Uploads for Front and Back Separately ---
+
         $front_img = null;
         $back_img = null;
 
-        // Process Front ID (MANDATORY)
+
         if (!isset($_FILES['front_id_photo']) || $_FILES['front_id_photo']['error'] === UPLOAD_ERR_NO_FILE) {
             throw new Exception("Please upload the front side of your valid ID.");
         }
@@ -116,15 +112,15 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             throw new Exception("Front ID upload failed: Error code " . $_FILES['front_id_photo']['error']);
         }
 
-        // Process Back ID (OPTIONAL)
+    
         if (isset($_FILES['back_id_photo']) && $_FILES['back_id_photo']['error'] === UPLOAD_ERR_OK && is_uploaded_file($_FILES['back_id_photo']['tmp_name'])) {
             $back_img = file_get_contents($_FILES['back_id_photo']['tmp_name']);
         }
 
-        // --- Store Data in Session (Excluding Role) ---
+
         $_SESSION['registration_data'] = [
             'email' => $email,
-            'password' => $password, // Hashed password
+            'password' => $password,
             'first_name' => $first_name,
             'middle_name' => $middle_name,
             'surname' => $surname,
@@ -135,40 +131,39 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             'street' => $street,
             'id_type' => $id_type,
             'front_id' => $front_img,
-            'back_id' => $back_img, // Can be NULL
-            // IMPORTANT: No 'role' field is stored here.
+            'back_id' => $back_img,
+
         ];
 
-        // --- OTP Generation and Sending ---
+
         $otp_code = str_pad(rand(0, 999999), 6, '0', STR_PAD_LEFT);
         $expires_at = date('Y-m-d H:i:s', strtotime('+10 minutes'));
         
-        // 1. Get or create email_id for this email
+
         $emailStmt = $pdo->prepare("SELECT email_id FROM email WHERE email = ?");
         $emailStmt->execute([$email]);
         $emailResult = $emailStmt->fetch();
         
         if ($emailResult) {
             $email_id = $emailResult['email_id'];
-            // Delete existing OTP for this email
+      
             $pdo->prepare("DELETE FROM email_verifications WHERE email_id = ?")->execute([$email_id]);
         } else {
-            // Create new email entry if it doesn't exist
             $insertEmailStmt = $pdo->prepare("INSERT INTO email (email) VALUES (?)");
             $insertEmailStmt->execute([$email]);
             $email_id = $pdo->lastInsertId();
         }
         
-        // Store OTP in database
+
         $stmt = $pdo->prepare("INSERT INTO email_verifications (email_id, otp_code, otp_expires_at)
                              VALUES (?, ?, ?)");
         $stmt->execute([$email_id, $otp_code, $expires_at]);
 
-        // 2. Send email via shared email helper
+   
         $toName = $first_name . ' ' . $surname;
         sendOTPEmail($email, trim($toName), $otp_code);
 
-        // --- Redirect to OTP verification page ---
+ 
         header("Location: verify_otp.php?email=" . urlencode($email));
         exit;
 
@@ -191,7 +186,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         /* Base White Theme */
         body {
             font-family: 'Inter', sans-serif;
-            background: #f0f2f5 !important; /* Light gray background */
+            background: #f0f2f5 !important;
             margin: 0;
             min-height: 100vh;
             display: flex;
@@ -201,7 +196,6 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             overflow-y: auto;
         }
 
-        /* LOGO WATERMARK CONTAINER (Desktop background logo) */
         #logo-watermark {
             position: fixed;
             top: 0;
@@ -211,26 +205,26 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             display: flex;
             justify-content: center;
             align-items: center;
-            z-index: 0; /* Behind everything */
+            z-index: 0; 
         }
 
         #logo-watermark img {
-            width: 1200px; /* Large size */
+            width: 1200px; 
             height: auto;
-            opacity: 0.25; /* Fading applied directly to the image */
+            opacity: 0.25;
         }
 
-        /* Fading Overlay (Ensures forms/text are readable) */
+
         body::before {
             content: "";
             position: fixed;
             inset: 0;
-            background: rgba(255, 255, 255, 0.40); /* Light white overlay */
-            z-index: 1; /* Above logo, below card */
+            background: rgba(255, 255, 255, 0.40); 
+            z-index: 1;
             pointer-events: none;
         }
 
-        /* Card/Form Styling */
+
         .register-container {
             position: relative;
             z-index: 10;
@@ -239,10 +233,22 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         }
 
         .register-card {
-            background: #ffffff; /* White card background */
+            background: #ffffff; 
             border-radius: 15px;
             box-shadow: 0 12px 24px rgba(0, 0, 0, 0.1);
             padding: 0;
+        }
+
+        /* Hide Edge/IE native password reveal button to avoid duplicate toggles */
+        input[type="password"]::-ms-reveal,
+        input[type="password"]::-ms-clear {
+            display: none;
+        }
+        /* Some Chromium variants expose a credentials autofill button; hide if present */
+        input[type="password"]::-webkit-credentials-auto-fill-button {
+            visibility: hidden;
+            display: none;
+            pointer-events: none;
         }
 
         .register-header {
@@ -260,7 +266,6 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             padding: 35px;
         }
 
-        /* Input Styling */
         .form-label {
             font-weight: 600;
             color: #555;
@@ -288,7 +293,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             padding-bottom: 5px;
         }
 
-        /* Password Instruction Styling */
+
         .password-requirements {
             list-style: none;
             padding-left: 0;
@@ -311,7 +316,6 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             color: #dc3545;
         }
 
-        /* Button Styling */
         .btn-register {
             background: #4f46e5;
             color: white;
@@ -328,44 +332,39 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             background: #4338ca;
         }
 
-        /* Link Styling */
+
         .text-decoration-none {
             color: #4f46e5 !important;
         }
         
-        /* NEW: Styling for the Mobile Logo Container (Hidden on Desktop) */
+
         #mobile-logo-container {
-            display: none; /* Hidden by default (desktop view) */
+            display: none;
             margin-bottom: 10px;
         }
         
         #mobile-logo-container img {
-            width: 80px; /* Set a small size for mobile */
+            width: 80px; 
             height: auto;
             border-radius: 50%;
         }
 
-        /* -------------------------------------
-           MEDIA QUERY: Styles for Mobile View 
-        ------------------------------------- */
         @media (max-width: 768px) {
-            /* 1. Hide the Large Watermark on small screens */
             #logo-watermark {
                 display: none; 
             }
 
-            /* 2. Show and Center the Mobile Logo */
+
             #mobile-logo-container {
                 display: block; 
-                text-align: center; /* Center the image element */
+                text-align: center; 
             }
-            
-            /* Adjust card padding for smaller screens */
+        
             .register-card {
                 margin: 10px;
             }
         }
-        /* END MEDIA QUERY */
+
     </style>
     </head>
 
@@ -428,21 +427,40 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                     </div>
                 </div>
                 
-                <div class="row g-3 mb-3">
+                <div class="row">
+                    <!-- PASSWORD -->
                     <div class="col-md-6">
                         <label for="password" class="form-label">Password <span class="text-danger">*</span></label>
-                        <input type="password" class="form-control" id="password" name="password" required>
-                        <ul id="passwordRequirements" class="password-requirements">
+                        <div class="input-group">
+                            <input type="password" class="form-control" id="password" name="password" required>
+                            <button class="btn btn-outline-secondary" type="button" id="togglePassword">
+                                <i class="fa fa-eye"></i>
+                            </button>
+                        </div>
+
+                        <ul id="passwordRequirements" class="password-requirements mt-2">
                             <li id="length"><i class="fas fa-times-circle"></i> Minimum 8 characters</li>
-                            <li id="uppercase"><i class="fas fa-times-circle"></i> At least one **uppercase** letter (A-Z)</li>
-                            <li id="lowercase"><i class="fas fa-times-circle"></i> At least one **lowercase** letter (a-z)</li>
-                            <li id="number"><i class="fas fa-times-circle"></i> At least one **number** (0-9)</li>
-                            <li id="special"><i class="fas fa-times-circle"></i> At least one **special character** (!@#$...)</li>
+                            <li id="uppercase"><i class="fas fa-times-circle"></i> At least one uppercase letter</li>
+                            <li id="lowercase"><i class="fas fa-times-circle"></i> At least one lowercase letter</li>
+                            <li id="number"><i class="fas fa-times-circle"></i> At least one number</li>
+                            <li id="special"><i class="fas fa-times-circle"></i> At least one special character</li>
                         </ul>
                     </div>
+
+                    <!-- CONFIRM PASSWORD -->
                     <div class="col-md-6">
                         <label for="confirm_password" class="form-label">Confirm Password <span class="text-danger">*</span></label>
-                        <input type="password" class="form-control" id="confirm_password" name="confirm_password" required>
+                        <div class="input-group">
+                            <input type="password" class="form-control" id="confirm_password" name="confirm_password" required>
+                            <button class="btn btn-outline-secondary" type="button" id="toggleConfirmPassword">
+                                <i class="fa fa-eye"></i>
+                            </button>
+                        </div>
+
+                        <!-- LIVE WARNING -->
+                        <p id="matchWarning" class="text-danger mt-2" style="display:none; font-size: 0.9rem;">
+                            ⚠ Passwords do not match.
+                        </p>
                     </div>
                 </div>
 
@@ -478,7 +496,6 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                             <option value="" disabled selected>Select Sex</option>
                             <option value="Male" <?php if(get_post_value('sex') == 'Male') echo 'selected'; ?>>Male</option>
                             <option value="Female" <?php if(get_post_value('sex') == 'Female') echo 'selected'; ?>>Female</option>
-                            <option value="Other" <?php if(get_post_value('sex') == 'Other') echo 'selected'; ?>>Other</option>
                         </select>
                     </div>
                     <div class="col-md-4">
@@ -496,7 +513,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                     </div>
                 </div>
 
-                <div class="row g-3 mb-4">
+                <div id="id_upload_section" class="row g-3 mb-4" style="display: none;">
                     <div class="col-md-6">
                         <label for="front_id_photo" class="form-label">Front Side of Valid ID <span class="text-danger">*</span></label>
                         <input class="form-control" type="file" id="front_id_photo" name="front_id_photo" accept="image/*" required>
@@ -506,6 +523,22 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                         <input class="form-control" type="file" id="back_id_photo" name="back_id_photo" accept="image/*">
                     </div>
                 </div>
+
+
+   <div class="mb-3">
+    <div class="form-check">
+        <input class="form-check-input" type="checkbox" id="termsCheck">
+        <label class="form-check-label" for="termsCheck">
+            I agree to the <a href="#" class="text-decoration-none">Terms and Conditions</a>.
+        </label>
+    </div>
+
+    <!-- Hidden Warning -->
+    <p id="termsWarning" class="text-danger mt-1" style="display:none; font-size: 0.9rem;">
+        ⚠ Please agree to the Terms and Conditions before proceeding.
+    </p>
+</div>
+
 
                 <div class="d-grid">
                     <button type="submit" class="btn-register">Register & Verify Email</button>
@@ -520,11 +553,12 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 </div>
 
 <script>
+
+//PASSWORD STRENGTH VALIDATION
 document.addEventListener('DOMContentLoaded', function() {
     const passwordInput = document.getElementById('password');
     const passwordRequirements = document.getElementById('passwordRequirements'); 
     
-    // Define the requirements and their corresponding list items
     const requirements = {
         length: { regex: /.{8,}/, element: document.getElementById('length') },
         uppercase: { regex: /[A-Z]/, element: document.getElementById('uppercase') },
@@ -536,27 +570,87 @@ document.addEventListener('DOMContentLoaded', function() {
     passwordInput.addEventListener('keyup', function() {
         const password = passwordInput.value;
 
-        // Logic to show/hide the UL container
         if (password.length > 0) {
             passwordRequirements.style.display = 'block';
         } else {
             passwordRequirements.style.display = 'none';
         }
-
-        // Logic to update the list item status (disappearing act)
         for (const key in requirements) {
             const req = requirements[key];
             const isMet = req.regex.test(password);
-            
-            // If the requirement is met, HIDE the list item
+
             if (isMet) {
                 req.element.style.display = 'none';
             } else {
-                // If the requirement is NOT met, SHOW the list item
                 req.element.style.display = 'list-item';
             }
         }
     });
+});
+
+
+// ID TYPE SELECTION AND UPLOAD DISPLAY
+document.getElementById('id_type').addEventListener('change', function () {
+    let section = document.getElementById('id_upload_section');
+
+    if (this.value !== "") {
+        section.style.display = "flex"; // or "block"
+        document.getElementById('front_id_photo').required = true;
+    } else {
+        section.style.display = "none";
+        document.getElementById('front_id_photo').required = false;
+    }
+});
+
+
+//SHOW PASSWORD TOGGLE
+function attachToggle(buttonId, inputId) {
+    const btn = document.getElementById(buttonId);
+    const input = document.getElementById(inputId);
+
+    btn.addEventListener('click', () => {
+        const isHidden = input.type === "password";
+        input.type = isHidden ? "text" : "password";
+        btn.querySelector("i").classList.toggle("fa-eye");
+        btn.querySelector("i").classList.toggle("fa-eye-slash");
+    });
+}
+
+attachToggle("togglePassword", "password");
+attachToggle("toggleConfirmPassword", "confirm_password");
+
+const pass = document.getElementById("password");
+const cpass = document.getElementById("confirm_password");
+const warning = document.getElementById("matchWarning");
+
+function checkMatch() {
+    if (cpass.value.length === 0) {
+        warning.style.display = "none";
+        return;
+    }
+    if (pass.value !== cpass.value) {
+        warning.style.display = "block"; 
+    } else {
+        warning.style.display = "none"; 
+    }
+}
+
+//PASSWORD MATCH CHECK
+pass.addEventListener("input", checkMatch);
+cpass.addEventListener("input", checkMatch);
+
+
+// TERMS AND CONDITIONS
+document.querySelector("form").addEventListener("submit", function(e) {
+    const termsCheck = document.getElementById('termsCheck');
+    const warning = document.getElementById('termsWarning');
+
+    if (!termsCheck.checked) {
+        e.preventDefault(); 
+        warning.style.display = 'block'; 
+    } else {
+        warning.style.display = 'none'; 
+    }
 });
 </script>
 </body>

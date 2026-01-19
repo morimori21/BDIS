@@ -1,405 +1,411 @@
-<?php 
+<?php
 include 'header.php';
+require_once '../../includes/config.php';
 
-// Get filter and pagination parameters
-$filter = isset($_GET['filter']) ? $_GET['filter'] : 'all';
-$page = isset($_GET['page']) ? (int)$_GET['page'] : 1;
-$limit = 10;
-$offset = ($page - 1) * $limit;
-
-// Build WHERE clause based on filter
-$where_clause = "1=1";
-switch($filter) {
-    case 'today':
-        $where_clause = "DATE(al.action_time) = CURDATE()";
-        break;
-    case 'week':
-        $where_clause = "al.action_time >= DATE_SUB(NOW(), INTERVAL 7 DAY)";
-        break;
-    case 'login':
-        $where_clause = "(al.action LIKE '%logged in%' OR al.action LIKE '%Logged in%' OR al.action LIKE '%login%' OR al.action LIKE '%Login%')";
-        break;
-    case 'logout':
-        $where_clause = "(al.action LIKE '%logged out%' OR al.action LIKE '%Logged out%' OR al.action LIKE '%logout%' OR al.action LIKE '%Logout%')";
-        break;
-    case 'document':
-        $where_clause = "(al.action LIKE '%document%' OR al.action LIKE '%Document%')";
-        break;
-    case 'system':
-        $where_clause = "(al.action LIKE '%system%' OR al.action LIKE '%System%' OR al.action LIKE '%settings%' OR al.action LIKE '%Settings%' OR al.action LIKE '%configuration%' OR al.action LIKE '%barangay%' OR al.action LIKE '%Barangay%' OR al.action LIKE '%Updated%' OR al.action LIKE '%updated%')";
-        break;
-    case 'password':
-        $where_clause = "(al.action LIKE '%password%' OR al.action LIKE '%Password%')";
-        break;
-    case 'verification':
-        $where_clause = "(al.action LIKE '%verify%' OR al.action LIKE '%Verify%' OR al.action LIKE '%reject%' OR al.action LIKE '%Reject%')";
-        break;
+if (!isset($_SESSION['user_id'])) {
+    header('Location: /Project_A2/login.php');
+    exit;
 }
 
-// Get total count for pagination
-$count_query = "SELECT COUNT(*) FROM activity_logs al WHERE $where_clause";
-$total_logs = $pdo->query($count_query)->fetchColumn();
-$total_pages = ceil($total_logs / $limit);
+$currentUserId = $_SESSION['user_id'];
+$userRole = $_SESSION['role'] ?? 'user';
+$isAdmin = ($userRole === 'admin'); 
+// Module classification 
+function classifyModule($action, $details = '') {
+    $text = strtolower($action . ' ' . $details);
 
-// Get activity logs with user information
-$logs_query = "
-    SELECT al.*, 
-           u.first_name, 
-           u.surname, 
-           COALESCE(ur.role, 'resident') as user_role
-    FROM activity_logs al 
+    $usersKeywords = ['approve', 'reject', 'register', 'change role', 'role', 'verification', 'verify', 'approve user', 'reject user', 'changed role'];
+    foreach ($usersKeywords as $kw) if (str_contains($text, $kw)) return 'Users';
+
+    $requestsKeywords = ['request', 'document', 'printed', 'signed', 'pickup', 'date_requested', 'request_purpose'];
+    foreach ($requestsKeywords as $kw) if (str_contains($text, $kw)) return 'Requests';
+
+    $ticketKeywords = ['ticket', 'support', 'chat', 'message', 'support ticket'];
+    foreach ($ticketKeywords as $kw) if (str_contains($text, $kw)) return 'Tickets';
+
+    $accountKeywords = ['login', 'logged in', 'logout', 'logged out', 'password', 'email', 'passkey', 'forgot password'];
+    foreach ($accountKeywords as $kw) if (str_contains($text, $kw)) return 'Account';
+
+    return 'System';
+}
+
+// Desired module display order
+$module_order = ['Users', 'Requests', 'Tickets', 'Account', 'System'];
+
+// --- Read filters (from query string / AJAX) ---
+$entriesOptions = [10,25,50,100];
+$entriesPerPage = isset($_GET['entries']) && in_array((int)$_GET['entries'],$entriesOptions) ? (int)$_GET['entries'] : 10;
+$search = $_GET['search'] ?? '';
+$currentPage = isset($_GET['page']) && $_GET['page']>0 ? (int)$_GET['page'] : 1;
+$date = $_GET['date'] ?? '';
+
+// Build SQL WHERE for search/date 
+$wherePieces = [];
+$params = [];
+
+if ($search) {
+    // Add logic to search user's first name, surname, action, and details
+    $wherePieces[] = "(u.first_name LIKE :search OR u.surname LIKE :search OR al.action LIKE :search OR al.action_details LIKE :search)";
+    $params[':search'] = "%$search%";
+}
+
+if ($date) {
+    if ($date === 'WEEK') {
+        $wherePieces[] = "al.action_time >= DATE_SUB(NOW(), INTERVAL 7 DAY)";
+    } elseif ($date === 'MONTH') {
+        $wherePieces[] = "MONTH(al.action_time) = MONTH(CURDATE()) AND YEAR(al.action_time) = YEAR(CURDATE())";
+    } else {
+        $wherePieces[] = "DATE(al.action_time) = :date";
+        $params[':date'] = $date;
+    }
+}
+
+// Apply user filter (unless admin)
+if (!$isAdmin) {
+    $wherePieces[] = "al.user_id = :uid";
+    $params[':uid'] = $currentUserId;
+}
+
+$whereSQL = '';
+if (!empty($wherePieces)) {
+    $whereSQL = 'WHERE ' . implode(' AND ', $wherePieces);
+}
+
+// --- Fetch all matching logs 
+
+$fetchSql = "
+    SELECT al.*, u.first_name, u.surname, ur.role, u.profile_picture
+    FROM activity_logs al
     LEFT JOIN users u ON al.user_id = u.user_id
     LEFT JOIN user_roles ur ON u.user_id = ur.user_id
-    WHERE $where_clause
-    ORDER BY al.action_time DESC 
-    LIMIT $limit OFFSET $offset
+    $whereSQL
+    ORDER BY al.action_time DESC
 ";
-$logs_stmt = $pdo->query($logs_query);
-$logs = $logs_stmt->fetchAll();
 
-// Get statistics
-$stats = [
-    'total' => $pdo->query("SELECT COUNT(*) FROM activity_logs")->fetchColumn(),
-    'today' => $pdo->query("SELECT COUNT(*) FROM activity_logs WHERE DATE(action_time) = CURDATE()")->fetchColumn(),
-    'week' => $pdo->query("SELECT COUNT(*) FROM activity_logs WHERE action_time >= DATE_SUB(NOW(), INTERVAL 7 DAY)")->fetchColumn(),
-    'logins' => $pdo->query("SELECT COUNT(*) FROM activity_logs WHERE action LIKE '%login%' AND action_time >= DATE_SUB(NOW(), INTERVAL 7 DAY)")->fetchColumn()
-];
+$fetchStmt = $pdo->prepare($fetchSql);
+foreach ($params as $k=>$v) {
+    // use INT for uid, strings otherwise
+    if ($k === ':uid') $fetchStmt->bindValue($k, $v, PDO::PARAM_INT);
+    else $fetchStmt->bindValue($k, $v, PDO::PARAM_STR);
+}
+$fetchStmt->execute();
+$allLogs = $fetchStmt->fetchAll(PDO::FETCH_ASSOC);
+
+// Group logs into modules -> dates
+$grouped = [];
+foreach ($allLogs as $log) {
+    $module = classifyModule($log['action'] ?? '', $log['action_details'] ?? '');
+    $dateLabel = date('j F Y', strtotime($log['action_time']));
+    if ($dateLabel == date('j F Y')) $dateLabel = 'Today';
+
+    if (!isset($grouped[$module])) $grouped[$module] = [];
+    if (!isset($grouped[$module][$dateLabel])) $grouped[$module][$dateLabel] = [];
+    $grouped[$module][$dateLabel][] = $log;
+}
+
+// Module counts (total items per module)
+$module_counts = [];
+foreach ($module_order as $m) {
+    $module_counts[$m] = isset($grouped[$m]) ? array_sum(array_map('count', $grouped[$m])) : 0;
+}
 ?>
 
+<head>
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/flatpickr/dist/flatpickr.min.css">
+    <script src="https://cdn.jsdelivr.net/npm/flatpickr"></script>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css"> 
+</head>
+
 <div class="container">
-    <!-- Header -->
-    <div class="d-flex justify-content-between align-items-center mb-4">
-        <h2 class="mb-0"><i class="bi bi-clock-history me-2"></i>Activity Logs</h2>
+    <div class="d-flex flex-column flex-md-row justify-content-between align-items-md-center mb-4">
+        <h2>Activity Logs</h2>
+        <button class="btn btn-primary mt-2 mt-md-0" type="button" data-bs-toggle="collapse" data-bs-target="#filterPanel" aria-expanded="false" aria-controls="filterPanel">
+            <i class="fas fa-filter me-1"></i> Filters
+        </button>
     </div>
 
-    <!-- Statistics Cards -->
-    
+    <div class="collapse mb-4" id="filterPanel">
+        <div class="card card-body shadow-sm">
+            <form action="" method="GET" class="row g-3">
+                
+                <div class="col-12 col-md-6 col-lg-5">
+                    <label for="search" class="form-label">Search Keywords</label>
+                    <div class="input-group">
+                        <input type="text" class="form-control" id="search" name="search" placeholder="User, Action, Details..." value="<?= htmlspecialchars($search) ?>">
+                        <button class="btn btn-outline-secondary" type="submit"><i class="fas fa-search"></i></button>
+                    </div>
+                </div>
 
-    <!-- Filter Buttons -->
-    <div class="card mb-4">
-        <div class="card-body p-3">
-            <div class="d-flex flex-wrap gap-1">
-                <a href="?filter=all" class="btn btn-sm <?php echo $filter == 'all' ? 'btn-primary' : 'btn-outline-primary'; ?>">
-                    <i class="bi bi-list-ul me-1"></i>All
-                </a>
-                <a href="?filter=login" class="btn btn-sm <?php echo $filter == 'login' ? 'btn-success' : 'btn-outline-success'; ?>">
-                    <i class="bi bi-box-arrow-in-right me-1"></i>User Login
-                </a>
-                <a href="?filter=logout" class="btn btn-sm <?php echo $filter == 'logout' ? 'btn-warning' : 'btn-outline-warning'; ?>">
-                    <i class="bi bi-box-arrow-left me-1"></i>User Logout
-                </a>
-                <a href="?filter=document" class="btn btn-sm <?php echo $filter == 'document' ? 'btn-info' : 'btn-outline-info'; ?>">
-                    <i class="bi bi-file-earmark me-1"></i>Document Changes
-                </a>
-                <a href="?filter=system" class="btn btn-sm <?php echo $filter == 'system' ? 'btn-danger' : 'btn-outline-danger'; ?>">
-                    <i class="bi bi-gear me-1"></i>System Changes
-                </a>
-                <a href="?filter=password" class="btn btn-sm <?php echo $filter == 'password' ? 'btn-secondary' : 'btn-outline-secondary'; ?>">
-                    <i class="bi bi-key me-1"></i>Password Changes
-                </a>
-                <a href="?filter=verification" class="btn btn-sm <?php echo $filter == 'verification' ? 'btn-primary' : 'btn-outline-primary'; ?>">
-                    <i class="bi bi-check-circle me-1"></i>Verifications
-                </a>
-            </div>
-        </div>
-    </div>
+                <div class="col-12 col-md-6 col-lg-5">
+                    <label for="datePicker" class="form-label">Filter by Date</label>
+                    <div class="input-group">
+                        <input type="text" class="form-control flatpickr" id="datePicker" placeholder="Select a specific date..." name="date_input" value="<?= $date && $date !== 'WEEK' && $date !== 'MONTH' ? htmlspecialchars($date) : '' ?>">
+                        <button class="btn btn-outline-danger" type="button" onclick="clearDateFilter()"><i class="fas fa-times"></i></button>
+                    </div>
+                    <small class="form-text text-muted">Use the quick filters below if needed.</small>
+                </div>
 
-    <!-- Activity Logs Table -->
-    <div class="card">
-        <div class="card-header bg-primary text-white py-2">
-            <h6 class="mb-0">
-                <i class="bi bi-clock-history me-2"></i>
-                Activity Logs 
-                <?php if ($filter != 'all'): ?>
-                    - <?php echo ucfirst($filter); ?>
-                <?php endif; ?>
-                (<?php echo number_format($total_logs); ?> entries)
-            </h6>
-        </div>
-        <div class="card-body p-0">
-            <div class="table-responsive">
-                <table class="table table-hover table-sm mb-0">
-                    <thead class="table-light">
-                        <tr>
-                            <th>User</th>
-                            <th>Action</th>
-                            <th>Details</th>
-                            <th>Date & Time</th>
-                            <th>Type</th>
-                        </tr>
-                    </thead>
-                    <tbody>
-                        <?php if (empty($logs)): ?>
-                        <tr>
-                            <td colspan="5" class="text-center text-muted py-4">
-                                <i class="bi bi-inbox" style="font-size: 2rem;"></i><br>
-                                No activity logs found for this filter.
-                            </td>
-                        </tr>
-                        <?php else: ?>
-                        <?php foreach ($logs as $log): 
-                            // Build full name
-                            $fullName = trim(($log['first_name'] ?? '') . ' ' . ($log['surname'] ?? ''));
-                            if (empty($fullName)) {
-                                $fullName = 'System';
-                            }
-                            
-                            // Build initials
-                            $initials = '';
-                            if (!empty($log['first_name'])) {
-                                $initials = strtoupper(substr($log['first_name'], 0, 1));
-                                if (!empty($log['surname'])) {
-                                    $initials .= strtoupper(substr($log['surname'], 0, 1));
-                                }
-                            } else {
-                                $initials = 'SY';
-                            }
-                            
-                            // Determine action type, icon, and badge color
-                            $action = $log['action'];
-                            $actionType = 'General';
-                            $actionIcon = 'bi-circle-fill';
-                            $badgeClass = 'secondary';
-                            
-                            // Check for logout first (since "logged out" contains "log")
-                            if (stripos($action, 'logged out') !== false || stripos($action, 'logout') !== false) {
-                                $actionType = 'Logout';
-                                $actionIcon = 'bi-box-arrow-left';
-                                $badgeClass = 'warning';
-                            } elseif (stripos($action, 'logged in') !== false || stripos($action, 'login') !== false) {
-                                $actionType = 'Login';
-                                $actionIcon = 'bi-box-arrow-in-right';
-                                $badgeClass = 'success';
-                            } elseif (stripos($action, 'document') !== false || stripos($action, 'request') !== false) {
-                                $actionType = 'Document';
-                                $actionIcon = 'bi-file-earmark';
-                                $badgeClass = 'info';
-                            } elseif (stripos($action, 'system') !== false || stripos($action, 'settings') !== false || stripos($action, 'configuration') !== false || stripos($action, 'barangay') !== false || stripos($action, 'updated') !== false) {
-                                $actionType = 'System';
-                                $actionIcon = 'bi-gear';
-                                $badgeClass = 'danger';
-                            } elseif (stripos($action, 'password') !== false) {
-                                $actionType = 'Password';
-                                $actionIcon = 'bi-key';
-                                $badgeClass = 'dark';
-                            } elseif (stripos($action, 'verify') !== false || stripos($action, 'approve') !== false) {
-                                $actionType = 'Verified';
-                                $actionIcon = 'bi-check-circle';
-                                $badgeClass = 'success';
-                            } elseif (stripos($action, 'reject') !== false) {
-                                $actionType = 'Rejected';
-                                $actionIcon = 'bi-x-circle';
-                                $badgeClass = 'danger';
-                            }
-                            
-                            // Role colors
-                            $roleColors = [
-                                'admin' => 'danger',
-                                'secretary' => 'info',
-                                'captain' => 'warning',
-                                'resident' => 'secondary'
-                            ];
-                            $roleColor = $roleColors[$log['user_role']] ?? 'secondary';
-                            
-                            // Role icons
-                            $roleIcons = [
-                                'admin' => 'bi-shield-fill-check',
-                                'secretary' => 'bi-pencil-square',
-                                'captain' => 'bi-person-badge-fill',
-                                'resident' => 'bi-house-fill'
-                            ];
-                            $roleIcon = $roleIcons[$log['user_role']] ?? 'bi-person-fill';
-                        ?>
-                        <tr>
-                            <td>
-                                <div class='d-flex align-items-center'>
-                                    <div class='avatar-sm bg-<?php echo $roleColor; ?> text-white d-flex align-items-center justify-content-center me-2' style='border-radius: 8px; width: 35px; height: 35px; font-size: 12px; font-weight: bold;'>
-                                        <?php echo htmlspecialchars($initials); ?>
-                                    </div>
-                                    <div>
-                                        <div><strong><?php echo htmlspecialchars($fullName); ?></strong></div>
-                                        <small class='text-muted'>
-                                            <i class='<?php echo $roleIcon; ?> me-1'></i><?php echo ucfirst($log['user_role']); ?>
-                                        </small>
-                                    </div>
-                                </div>
-                            </td>
-                            <td>
-                                <div class='d-flex align-items-center'>
-                                    <i class='<?php echo $actionIcon; ?> me-2 text-<?php echo $badgeClass; ?>'></i>
-                                    <span><?php echo htmlspecialchars($action); ?></span>
-                                </div>
-                            </td>
-                            <td>
-                                <small class='text-muted'>
-                                    <?php 
-                                    $details = $log['action_details'];
-                                    if (!empty($details)) {
-                                        echo htmlspecialchars(strlen($details) > 50 ? substr($details, 0, 50) . '...' : $details);
-                                    } else {
-                                        echo '-';
-                                    }
-                                    ?>
-                                </small>
-                            </td>
-                            <td>
-                                <div>
-                                    <strong><?php echo date('M j, Y', strtotime($log['action_time'])); ?></strong><br>
-                                    <small class='text-muted'><?php echo date('g:i A', strtotime($log['action_time'])); ?></small>
-                                </div>
-                            </td>
-                            <td>
-                                <span class='badge bg-<?php echo $badgeClass; ?>'>
-                                    <i class='<?php echo $actionIcon; ?> me-1'></i><?php echo $actionType; ?>
-                                </span>
-                            </td>
-                        </tr>
-                        <?php endforeach; ?>
-                        <?php endif; ?>
-                    </tbody>
-                </table>
-            </div>
-        </div>
-    </div>
-
-    <!-- Pagination -->
-    <?php if ($total_pages > 1): ?>
-    <nav aria-label="Activity logs pagination" class="mt-3">
-        <ul class="pagination justify-content-center">
-            <li class="page-item <?php echo $page <= 1 ? 'disabled' : ''; ?>">
-                <a class="page-link" href="?filter=<?php echo $filter; ?>&page=<?php echo $page - 1; ?>">Previous</a>
-            </li>
-            <?php 
-            // Show limited page numbers (max 10 pages visible)
-            $max_visible = 10;
-            $start_page = max(1, min($page - floor($max_visible / 2), $total_pages - $max_visible + 1));
-            $end_page = min($total_pages, $start_page + $max_visible - 1);
+                <div class="col-12 col-md-12 col-lg-2 d-flex align-items-end">
+                    <button type="submit" class="btn btn-primary w-100 me-2"><i class="fas fa-check me-1"></i> Apply</button>
+                    <a href="activity_logs.php" class="btn btn-outline-secondary w-100"><i class="fas fa-undo me-1"></i> Reset</a>
+                </div>
+            </form>
             
-            for ($i = $start_page; $i <= $end_page; $i++): 
+            <hr class="mt-4 mb-2">
+            
+            <div class="d-flex flex-wrap justify-content-start align-items-center pt-2">
+                <span class="me-3 mb-2 fw-semibold">Quick Filters:</span>
+                <?php
+                // Defining quick filters manually since the stat computation is removed
+                $quick_filters = [
+                    'today' => 'Today',
+                    'yesterday' => 'Yesterday',
+                    'WEEK' => 'Last 7 Days',
+                    'MONTH' => 'This Month',
+                ];
+                ?>
+                <?php foreach ($quick_filters as $key => $label): ?>
+                    <button type="button" class="btn btn-sm btn-outline-info me-2 mb-2 clickable-filter <?= ($date === $key) ? 'active' : '' ?>" data-filter="<?= $key ?>">
+                        <?= htmlspecialchars($label) ?>
+                    </button>
+                <?php endforeach; ?>
+            </div>
+            
+        </div>
+    </div>
+    
+    <div class="card mb-4">
+        <div class="card-body p-0">
+            <?php foreach ($module_order as $moduleName): 
+                $count = $module_counts[$moduleName] ?? 0;
             ?>
-            <li class="page-item <?php echo $i == $page ? 'active' : ''; ?>">
-                <a class="page-link" href="?filter=<?php echo $filter; ?>&page=<?php echo $i; ?>"><?php echo $i; ?></a>
-            </li>
-            <?php endfor; ?>
-            <li class="page-item <?php echo $page >= $total_pages ? 'disabled' : ''; ?>">
-                <a class="page-link" href="?filter=<?php echo $filter; ?>&page=<?php echo $page + 1; ?>">Next</a>
-            </li>
-        </ul>
-    </nav>
-    <?php endif; ?>
+                <div class="module-block mb-0 border-bottom" data-module="<?= htmlspecialchars($moduleName) ?>">
+                    <div class="module-header d-flex justify-content-between align-items-center p-3"
+                          role="button" aria-expanded="true">
+                        <div class="d-flex align-items-center">
+                            <span class="module-arrow me-2">▼</span>
+                            <strong class="me-2"><?= htmlspecialchars($moduleName) ?></strong>
+                            <span class="badge bg-primary rounded-pill"><?= $count ?></span>
+                        </div>
+                        <div class="text-muted small d-none d-md-block">Click to collapse/expand</div>
+                    </div>
+
+                    <div class="module-body" style="display:block;">
+                        <?php
+                        if (empty($grouped[$moduleName])) {
+                            echo '<div class="p-4 text-muted border-top">No activity found in this area.</div>';
+                        } else {
+                            // For each date group inside module
+                            foreach ($grouped[$moduleName] as $dateLabel => $items) {
+                                echo '<div class="date-group mb-0">';
+                                echo '<div class="date-header fw-semibold p-3 border-top" style="background:#f8f9fa;">' . htmlspecialchars($dateLabel) . '</div>';
+                                echo '<div class="list-group list-group-flush">';
+                                foreach ($items as $log) {
+                                    $time = date('g:i A', strtotime($log['action_time']));
+                                    $fullName = trim($log['first_name'] . ' ' . $log['surname']);
+                                    $username = $fullName ?: 'System';
+                                    $formattedName = ucwords(strtolower(htmlspecialchars($username)));
+                                    $role = ucfirst($log['role'] ?? 'System');
+                                    $action = htmlspecialchars($log['action']);
+                                    $details = htmlspecialchars($log['action_details'] ?? '');
+
+                                    // avatar
+                                    $imgHtml = '';
+                                    if (!empty($log['profile_picture'])) {
+                                        $imgSrc = 'data:image/jpeg;base64,' . base64_encode($log['profile_picture']);
+                                        $imgHtml = '<img src="'. $imgSrc .'" class="rounded-circle me-3" width="40" height="40" style="object-fit:cover;">';
+                                    } else {
+                                        $initials = strtoupper(substr($username, 0, 2));
+                                        $imgHtml = '<div class="avatar-xs bg-secondary text-white rounded-circle d-flex align-items-center justify-content-center me-3" style="width:40px;height:40px;font-size:13px;">' . htmlspecialchars($initials) . '</div>';
+                                    }
+
+                                    echo '<div class="list-item d-flex align-items-start p-3 border-bottom">';
+                                    // left: avatar
+                                    echo '<div class="me-2">' . $imgHtml . '</div>';
+
+                                    // middle: content
+                                    echo '<div class="flex-grow-1">';
+                                    echo '<div class="d-flex justify-content-between flex-column flex-sm-row">'; // Added flex-column for mobile
+                                    echo '<div><span class="fw-semibold">' . $formattedName . '</span> <small class="text-muted d-block d-sm-inline">· ' . htmlspecialchars($role) . '</small></div>'; // d-block on mobile
+                                    echo '<div><small class="text-muted">' . htmlspecialchars($time) . '</small></div>';
+                                    echo '</div>'; // end header
+                                    echo '<div class="mt-1"><strong>' . $action . '</strong></div>';
+                                    if ($details) echo '<div class="text-muted small mt-1">' . $details . '</div>';
+                                    echo '</div>'; // end middle
+
+                                    echo '</div>'; // end list-item
+                                }
+                                echo '</div>'; // end list-group
+                                echo '</div>'; // end date-group
+                            }
+                        }
+                        ?>
+                    </div>
+                </div>
+            <?php endforeach; ?>
+        </div>
+    </div>
+
 </div>
 
+<script>
+    // Helper function to clear the current filter and reload
+    function clearDateFilter() {
+        const url = new URL(window.location);
+        url.searchParams.delete('date');
+        url.searchParams.delete('date_input');
+        window.location.href = url.toString();
+    }
+
+    document.addEventListener('DOMContentLoaded', () => {
+        // --- Module Collapse/Expand Logic ---
+        document.querySelectorAll('.module-block').forEach(block => {
+            const header = block.querySelector('.module-header');
+            const body = block.querySelector('.module-body');
+            const arrow = block.querySelector('.module-arrow');
+
+            // ensure expanded initial state
+            body.style.display = 'block';
+            arrow.textContent = '▼';
+            header.setAttribute('aria-expanded', 'true');
+
+            header.addEventListener('click', () => {
+                const isVisible = body.style.display !== 'none';
+                if (isVisible) {
+                    // collapse
+                    body.style.display = 'none';
+                    arrow.textContent = '▶';
+                    header.setAttribute('aria-expanded', 'false');
+                } else {
+                    // expand
+                    body.style.display = 'block';
+                    arrow.textContent = '▼';
+                    header.setAttribute('aria-expanded', 'true');
+                }
+            });
+        });
+
+        // --- Quick Filter Button Clicks: Filter by Date ---
+        document.querySelectorAll('.clickable-filter').forEach(button => {
+            button.addEventListener('click', () => {
+                const filter = button.dataset.filter;
+                const currentUrl = new URL(window.location);
+                
+                // Clear existing date/date_input first
+                currentUrl.searchParams.delete('date');
+                currentUrl.searchParams.delete('date_input');
+                
+                let dateParam = filter;
+
+                if (filter === 'today') {
+                    // Convert 'today' filter to a specific date for consistent handling on PHP side
+                    dateParam = new Date().toISOString().split('T')[0];
+                } else if (filter === 'yesterday') {
+                    const d = new Date();
+                    d.setDate(d.getDate() - 1);
+                    dateParam = d.toISOString().split('T')[0];
+                }
+                
+                currentUrl.searchParams.set('date', dateParam);
+                window.location.href = currentUrl.toString();
+            });
+        });
+
+        // --- Flatpickr Initialization ---
+        const datePickerElement = document.getElementById("datePicker");
+        if (typeof flatpickr !== 'undefined' && datePickerElement) {
+            flatpickr(datePickerElement, {
+                dateFormat: "Y-m-d",
+                allowInput: true,
+                // The form submission handles the filtering
+            });
+            
+            // If a specific date is set in the URL, ensure the form input reflects it
+            const url = new URL(window.location);
+            const dateInput = url.searchParams.get('date');
+            if(dateInput && dateInput !== 'WEEK' && dateInput !== 'MONTH') {
+                 datePickerElement._flatpickr.setDate(dateInput, true); 
+            }
+        }
+        
+        // --- Ensure search results keep the filter panel open ---
+        const url = new URL(window.location);
+        if (url.searchParams.has('search') || url.searchParams.has('date') || url.searchParams.has('entries') || url.searchParams.has('date_input')) {
+            const filterPanel = document.getElementById('filterPanel');
+            if (filterPanel) {
+                filterPanel.classList.add('show');
+                filterPanel.setAttribute('aria-expanded', 'true');
+            }
+        }
+    });
+</script>
+
 <style>
-    /* Compact table styling - no scrolling */
-    .container {
-        max-height: calc(100vh - 80px);
-        overflow: hidden !important;
-    }
-    
-    .table {
-        font-size: 0.7rem !important;
-        margin-bottom: 0 !important;
-    }
-    
-    .table td, .table th {
-        padding: 0.3rem !important;
-        white-space: nowrap;
-    }
-    
-    .table thead th {
-        font-size: 0.7rem;
-        padding: 0.4rem !important;
-    }
-    
-    .table .badge {
-        font-size: 0.65rem;
-        padding: 0.2rem 0.4rem;
-    }
-    
-    .table .avatar-sm {
-        width: 28px !important;
-        height: 28px !important;
-        font-size: 0.65rem !important;
-    }
-    
-    .table small {
-        font-size: 0.65rem;
-    }
-    
-    .table strong {
-        font-size: 0.7rem;
-    }
-    
-    .card-body {
-        padding: 0.5rem !important;
-    }
-    
-    .stat-card {
-        border: none;
-        box-shadow: 0 2px 8px rgba(0,0,0,0.08);
-        transition: transform 0.2s ease, box-shadow 0.2s ease;
+    .module-header {
+        background: #ffffff;
+        border: 1px solid #e9ecef;
         border-radius: 8px;
+        padding: 10px;
+        cursor: pointer;
     }
-    
-    .stat-card:hover {
-        transform: translateY(-4px);
-        box-shadow: 0 4px 12px rgba(0,0,0,0.12);
+    .module-header:hover { 
+        background:#f8f9fa; 
     }
-    
-    .stat-icon {
-        width: 48px;
-        height: 48px;
-        border-radius: 12px;
-        display: flex;
-        align-items: center;
-        justify-content: center;
-        margin: 0 auto;
+    .module-arrow { 
+        display:inline-block; 
+        width:18px; 
+        text-align:center; 
     }
-    
-    .stat-icon i {
-        font-size: 1.5rem;
+    .list-item { 
+        background: #fff; 
     }
-    
-    .stat-number {
-        font-weight: 600;
-        font-size: 1.5rem;
-        color: #212529;
-        margin-bottom: 0.5rem;
+    .avatar-xs { display:inline-flex; 
+        align-items:center; 
+        justify-content:center; 
+        border-radius:50%; 
     }
-    
-    .stat-label {
-        font-weight: 500;
-        font-size: 0.85rem;
-        color: #495057;
-        margin: 0;
+        .clickable-filter.active {
+            background-color: var(--bs-info);
+            color: white;
+        }
+        .module-block:last-child {
+            border-bottom: none !important;
+        }
+        .module-header {
+            border: none !important;
+            border-radius: 0 !important;
+        }
+    @media (max-width: 767.98px) { 
+        .container {
+            padding-left: 10px;
+            padding-right: 10px;
+        }
+        .module-header {
+            padding: 10px 15px;
+        }
+        .list-item {
+            padding: 10px 15px !important;
+        }
+        .date-header {
+            padding: 8px 15px !important;
+            font-size: 0.9rem;
+        }
+        .list-item .flex-grow-1 .d-flex {
+            align-items: flex-start !important; 
+        }
     }
-    
-    .stat-card-link {
-        text-decoration: none;
-        color: inherit;
-        display: block;
-        transition: all 0.3s ease;
+    @media (min-width: 992px) { 
+        .container {
+            max-width: 1000px !important;
+            margin-left: auto !important;
+            margin-right: auto !important;
+        }
     }
-    
-    .stat-card-link:hover {
-        text-decoration: none;
-        color: inherit;
-    }
-    
-    .card {
-        box-shadow: 0 2px 8px rgba(0,0,0,0.08);
-        border: none;
-        border-radius: 8px;
-    }
-    
-    .card-header {
-        border-radius: 8px 8px 0 0 !important;
-        padding: 0.5rem 1rem !important;
-    }
-    
-    .btn-sm {
-        font-size: 0.7rem;
-        padding: 0.2rem 0.5rem;
+    @media (max-width: 767.98px) { 
+        .container {
+            padding-left: 10px;
+            padding-right: 10px;
+        }
     }
 </style>
 

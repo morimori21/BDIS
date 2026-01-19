@@ -1,129 +1,179 @@
-<?php include 'header.php'; 
+<?php include 'header.php';?>
 
-?>
-
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/flatpickr/dist/flatpickr.min.css">
+<script src="https://cdn.jsdelivr.net/npm/flatpickr"></script>
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css"> 
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/sweetalert2@11/dist/sweetalert2.min.css">
+<script src="https://cdn.jsdelivr.net/npm/sweetalert2@11"></script>
 <div class="container">
-    <div class="d-flex align-items-center mb-3">
-        <i class="bi bi-journal-text" style="font-size: 2rem; color: #0d6efd; margin-right: 15px;"></i>
+    <div class="d-flex flex-column flex-md-row justify-content-between align-items-md-center mb-3">
         <h2 class="mb-0">Document Request History</h2>
+        <button class="btn btn-primary mt-2 mt-md-0" type="button" data-bs-toggle="collapse" data-bs-target="#filterPanel" aria-expanded="false" aria-controls="filterPanel">
+            <i class="fas fa-filter me-1"></i> Filters
+        </button>
     </div>
     
-    <!-- Filter Card -->
-    <div class="row mb-4">
-        <div class="col-md-12">
-            <div class="card">
-                <div class="card-body">
-                    <form method="GET" class="row g-3">
-                        <div class="col-md-3">
-                            <label class="form-label">Status Filter</label>
-                            <select name="status" class="form-select">
-                                <option value="">All Status</option>
-                                <option value="pending" <?php echo ($_GET['status'] ?? '') === 'pending' ? 'selected' : ''; ?>>Pending</option>
-                                <option value="approved" <?php echo ($_GET['status'] ?? '') === 'approved' ? 'selected' : ''; ?>>Approved</option>
-                                <option value="signed" <?php echo ($_GET['status'] ?? '') === 'signed' ? 'selected' : ''; ?>>Signed</option>
-                                <option value="printed" <?php echo ($_GET['status'] ?? '') === 'printed' ? 'selected' : ''; ?>>Printed</option>
-                                <option value="completed" <?php echo ($_GET['status'] ?? '') === 'completed' ? 'selected' : ''; ?>>Completed</option>
-                                <option value="rejected" <?php echo ($_GET['status'] ?? '') === 'rejected' ? 'selected' : ''; ?>>Rejected</option>
-                            </select>
-                        </div>
-                        <div class="col-md-3">
-                            <label class="form-label">Document Type</label>
-                            <select name="doc_type" class="form-select">
-                                <option value="">All Types</option>
-                                <?php
-                                $stmt = $pdo->query("SELECT DISTINCT dt.doc_type_id, dt.doc_name FROM document_types dt JOIN document_requests dr ON dt.doc_type_id = dr.doc_type_id WHERE dr.resident_id = {$_SESSION['user_id']} ORDER BY dt.doc_name");
-                                while ($type = $stmt->fetch()) {
-                                    $selected = ($_GET['doc_type'] ?? '') == $type['doc_type_id'] ? 'selected' : '';
-                                    echo "<option value='{$type['doc_type_id']}' {$selected}>{$type['doc_name']}</option>";
-                                }
-                                ?>
-                            </select>
-                        </div>
-                        <div class="col-md-3">
-                            <label class="form-label">Date Range</label>
-                            <select name="date_range" class="form-select">
-                                <option value="">All Time</option>
-                                <option value="today" <?php echo ($_GET['date_range'] ?? '') === 'today' ? 'selected' : ''; ?>>Today</option>
-                                <option value="week" <?php echo ($_GET['date_range'] ?? '') === 'week' ? 'selected' : ''; ?>>This Week</option>
-                                <option value="month" <?php echo ($_GET['date_range'] ?? '') === 'month' ? 'selected' : ''; ?>>This Month</option>
-                                <option value="quarter" <?php echo ($_GET['date_range'] ?? '') === 'quarter' ? 'selected' : ''; ?>>This Quarter</option>
-                            </select>
-                        </div>
-                        <div class="col-md-3">
-                            <label class="form-label">&nbsp;</label>
-                            <div class="d-grid">
-                                <button type="submit" class="btn btn-primary">🔍 Filter</button>
-                            </div>
-                        </div>
-                    </form>
+    <div class="collapse mb-4" id="filterPanel">
+        <div class="card card-body shadow-sm">
+            <form action="" method="GET" class="row g-3">
+                
+                <div class="col-12 col-md-4">
+                    <label for="search" class="form-label">Search Request ID / Purpose</label>
+                    <div class="input-group">
+                        <input type="text" class="form-control" id="search" name="search" placeholder="ID or Keyword..." value="<?= htmlspecialchars($_GET['search'] ?? '') ?>">
+                        <button class="btn btn-outline-secondary" type="submit"><i class="fas fa-search"></i></button>
+                    </div>
+                </div>
+
+                <div class="col-12 col-md-4">
+                    <label class="form-label">Document Type</label>
+                    <select name="doc_type" class="form-select">
+                        <option value="">All Types</option>
+                        <?php
+                        $stmt = $pdo->query("SELECT DISTINCT dt.doc_type_id, dt.doc_name FROM document_types dt JOIN document_requests dr ON dt.doc_type_id = dr.doc_type_id WHERE dr.resident_id = {$_SESSION['user_id']} ORDER BY dt.doc_name");
+                        while ($type = $stmt->fetch()) {
+                            $selected = ($_GET['doc_type'] ?? '') == $type['doc_type_id'] ? 'selected' : '';
+                            echo "<option value='{$type['doc_type_id']}' {$selected}>{$type['doc_name']}</option>";
+                        }
+                        ?>
+                    </select>
+                </div>
+                
+                <div class="col-12 col-md-4">
+                    <label for="datePicker" class="form-label">Filter by Specific Date</label>
+                    <div class="input-group">
+                        <input type="text" class="form-control flatpickr" id="datePicker" placeholder="Select a specific date..." name="date_input" value="<?= htmlspecialchars($_GET['date_input'] ?? '') ?>">
+                        <button class="btn btn-outline-danger" type="button" onclick="clearSpecificDateFilter()"><i class="fas fa-times"></i></button>
+                    </div>
+                    <small class="form-text text-muted">Specific date takes precedence over date ranges.</small>
+                </div>
+
+                <div class="col-12 d-flex justify-content-end">
+                    <a href="request_history.php" class="btn btn-outline-secondary me-2"><i class="fas fa-undo me-1"></i> Reset All Filters</a>
+                    <button type="submit" class="btn btn-primary"><i class="fas fa-check me-1"></i> Apply Filters</button>
+                </div>
+            </form>
+            
+            <hr class="mt-4 mb-2">
+
+            <div class="mb-3">
+                <p class="fw-semibold mb-2">Status Quick Filters:</p>
+                <div class="d-flex flex-wrap justify-content-start align-items-center">
+                    <?php
+                    $status_filters = [
+                        'pending' => 'Pending',
+                        'in-progress' => 'In-Progress',
+                        'signed' => 'Signed',
+                        'printed' => 'Printed',
+                        'completed' => 'Completed',
+                        'rejected' => 'Rejected',
+                        'cancelled' => 'Cancelled',
+                    ];
+                    $current_status = $_GET['status'] ?? '';
+                    foreach ($status_filters as $key => $label):
+                        $isActive = ($current_status === $key);
+                    ?>
+                        <button type="button" 
+                                class="btn btn-sm btn-outline-warning me-2 mb-2 quick-filter-btn <?= $isActive ? 'active' : '' ?>" 
+                                data-filter-type="status" 
+                                data-filter-value="<?= $key ?>">
+                            <?= htmlspecialchars($label) ?>
+                        </button>
+                    <?php endforeach; ?>
+                </div>
+            </div>
+            
+            <div>
+                <p class="fw-semibold mb-2">Date Range Quick Filters:</p>
+                <div class="d-flex flex-wrap justify-content-start align-items-center">
+                    <?php
+                    $date_range_filters = [
+                        'today' => 'Today',
+                        'week' => 'This Week',
+                        'month' => 'This Month',
+                        'quarter' => 'This Quarter',
+                    ];
+                    $current_range = $_GET['date_range'] ?? '';
+                    foreach ($date_range_filters as $key => $label):
+                        $isActive = ($current_range === $key);
+                    ?>
+                        <button type="button" 
+                                class="btn btn-sm btn-outline-info me-2 mb-2 quick-filter-btn <?= $isActive ? 'active' : '' ?>" 
+                                data-filter-type="date_range" 
+                                data-filter-value="<?= $key ?>">
+                            <?= htmlspecialchars($label) ?>
+                        </button>
+                    <?php endforeach; ?>
                 </div>
             </div>
         </div>
     </div>
     
-    <!-- Summary Cards -->
-    <div class="row mb-4">
-        <?php
-        $baseQuery = "FROM document_requests dr JOIN document_types dt ON dr.doc_type_id = dt.doc_type_id WHERE dr.resident_id = ?";
-        $params = [$_SESSION['user_id']];
-        
-        // Apply filters
-        $whereConditions = [];
-        if (!empty($_GET['status'])) {
-            $whereConditions[] = "dr.request_status = ?";
-            $params[] = $_GET['status'];
-        }
-        if (!empty($_GET['doc_type'])) {
-            $whereConditions[] = "dr.doc_type_id = ?";
-            $params[] = $_GET['doc_type'];
-        }
-        if (!empty($_GET['date_range'])) {
-            switch ($_GET['date_range']) {
-                case 'today':
-                    $whereConditions[] = "DATE(dr.date_requested) = CURDATE()";
-                    break;
-                case 'week':
-                    $whereConditions[] = "WEEK(dr.date_requested) = WEEK(CURDATE()) AND YEAR(dr.date_requested) = YEAR(CURDATE())";
-                    break;
-                case 'month':
-                    $whereConditions[] = "MONTH(dr.date_requested) = MONTH(CURDATE()) AND YEAR(dr.date_requested) = YEAR(CURDATE())";
-                    break;
-                case 'quarter':
-                    $whereConditions[] = "QUARTER(dr.date_requested) = QUARTER(CURDATE()) AND YEAR(dr.date_requested) = YEAR(CURDATE())";
-                    break;
-            }
-        }
-        
-        if (!empty($whereConditions)) {
-            $baseQuery .= " AND " . implode(" AND ", $whereConditions);
-        }
-        
-        // Get summary statistics
-        $totalQuery = "SELECT COUNT(*) $baseQuery";
-        $pendingQuery = "SELECT COUNT(*) $baseQuery AND dr.request_status = 'pending'";
-        $completedQuery = "SELECT COUNT(*) $baseQuery AND dr.request_status = 'completed'";
-        $costQuery = "SELECT COALESCE(SUM(dt.doc_price), 0) $baseQuery";
-        
-        // Execute statistics queries
-        $stmt = $pdo->prepare($totalQuery);
-        $stmt->execute($params);
-        $total = $stmt->fetchColumn();
-        
-        $stmt = $pdo->prepare($pendingQuery);
-        $stmt->execute($params);
-        $pending = $stmt->fetchColumn();
-        
-        $stmt = $pdo->prepare($completedQuery);
-        $stmt->execute($params);
-        $completed = $stmt->fetchColumn();
-        
-        $stmt = $pdo->prepare($costQuery);
-        $stmt->execute($params);
-        $total_cost = $stmt->fetchColumn();
-        ?>
-        
+    <?php
+    $baseQuery = "FROM document_requests dr JOIN document_types dt ON dr.doc_type_id = dt.doc_type_id WHERE dr.resident_id = ?";
+    $params = [$_SESSION['user_id']];
     
-    <!-- Requests Table -->
+    // Apply filters
+    $whereConditions = [];
+    $status = $_GET['status'] ?? '';
+    $doc_type = $_GET['doc_type'] ?? '';
+    $date_range = $_GET['date_range'] ?? '';
+    $date_input = $_GET['date_input'] ?? '';
+    $search = $_GET['search'] ?? '';
+
+    // Search Filter (Request ID or Purpose)
+    if (!empty($search)) {
+        if (is_numeric($search) && $search > 0) {
+             $whereConditions[] = "dr.request_id = ?";
+             $params[] = $search;
+        } else {
+             $whereConditions[] = "dr.request_purpose LIKE ?";
+             $params[] = "%$search%";
+        }
+    }
+    
+    // Status Filter (from quick filters)
+    if (!empty($status)) {
+        $whereConditions[] = "dr.request_status = ?";
+        $params[] = $status;
+    }
+    
+    // Document Type Filter
+    if (!empty($doc_type)) {
+        $whereConditions[] = "dr.doc_type_id = ?";
+        $params[] = $doc_type;
+    }
+    
+    // Date Input Filter (from flatpickr) - Highest priority
+    if (!empty($date_input)) {
+        $whereConditions[] = "DATE(dr.date_requested) = ?";
+        $params[] = $date_input;
+    }
+    
+    // Date Range Filter (from quick filters) - Only if date_input is empty
+    if (empty($date_input) && !empty($date_range)) { 
+        switch ($date_range) {
+            case 'today':
+                $whereConditions[] = "DATE(dr.date_requested) = CURDATE()";
+                break;
+            case 'week':
+                $whereConditions[] = "WEEK(dr.date_requested) = WEEK(CURDATE()) AND YEAR(dr.date_requested) = YEAR(CURDATE())";
+                break;
+            case 'month':
+                $whereConditions[] = "MONTH(dr.date_requested) = MONTH(CURDATE()) AND YEAR(dr.date_requested) = YEAR(CURDATE())";
+                break;
+            case 'quarter':
+                $whereConditions[] = "QUARTER(dr.date_requested) = QUARTER(CURDATE()) AND YEAR(dr.date_requested) = YEAR(CURDATE())";
+                break;
+        }
+    }
+    
+    if (!empty($whereConditions)) {
+        $baseQuery .= " AND " . implode(" AND ", $whereConditions);
+    }
+    // END: FILTER LOGIC
+    ?>
+    
     <div class="card">
         <div class="card-header bg-primary text-white d-flex justify-content-between align-items-center">
             <h5 class="mb-0">Your Document Requests</h5>
@@ -142,7 +192,7 @@
                             <th>Status</th>
                             <th>Cost</th>
                             <th>Date Requested</th>
-                            <th>Pickup Date</th>
+                            <th>Pickup Representative</th>
                             <th>Actions</th>
                         </tr>
                     </thead>
@@ -170,22 +220,18 @@
                         }
                         
                         while ($request = $stmt->fetch()) {
-                            // Prepare pickup display: show pickup representative or schedule info  
+                            // Prepare pickup display: show pickup representative only (schedule removed)
                             $pickupDisplay = htmlspecialchars($request['pickup_representative'] ?? 'Not set');
-                            if (!empty($request['schedule_id'])) {
-                                $sstmt = $pdo->prepare("SELECT schedule_date FROM schedule WHERE schedule_id = ?");
-                                $sstmt->execute([$request['schedule_id']]);
-                                $sch = $sstmt->fetch();
-                                if ($sch) {
-                                    $pickupDisplay = date('M j, Y', strtotime($sch['schedule_date']));
-                                }
-                            }
                             
                             // Status badge styling
                             $statusBadge = '';
                             switch ($request['request_status']) {
                                 case 'completed':
                                     $statusBadge = 'success';
+                                    break;
+                                case 'cancelled':
+                                case 'canceled':
+                                    $statusBadge = 'secondary';
                                     break;
                                 case 'rejected':
                                     $statusBadge = 'danger';
@@ -206,11 +252,11 @@
                                     $statusBadge = 'warning';
                             }
                             
-                            echo "<tr>";
+                            echo "<tr data-request-id='" . htmlspecialchars($request['request_id']) . "'>";
                             echo "<td><strong>#{$request['request_id']}</strong></td>";
                             echo "<td>" . htmlspecialchars($request['doc_name']) . "</td>";
                             echo "<td>" . htmlspecialchars(substr($request['request_purpose'] ?? '', 0, 50)) . (strlen($request['request_purpose'] ?? '') > 50 ? '...' : '') . "</td>";
-                            echo "<td><span class='badge bg-{$statusBadge}'>" . htmlspecialchars(ucfirst($request['request_status'])) . "</span></td>";
+                            echo "<td><span class='badge bg-{$statusBadge}'>" . htmlspecialchars(ucfirst(str_replace('-', ' ', $request['request_status']))) . "</span></td>";
                             echo "<td class='text-success'>₱" . number_format($request['doc_price'], 2) . "</td>";
                             echo "<td>" . date('M j, Y', strtotime($request['date_requested'])) . "<br><small class='text-muted'>" . date('g:i A', strtotime($request['date_requested'])) . "</small></td>";
                             echo "<td>" . $pickupDisplay . "</td>";
@@ -224,7 +270,6 @@
                 </table>
             </div>
             
-            <!-- Pagination -->
             <?php if ($total_pages > 1): ?>
             <div class="d-flex justify-content-between align-items-center mt-3 px-2">
                 <small class="text-muted">
@@ -232,7 +277,6 @@
                 </small>
                 <nav>
                     <ul class="pagination pagination-sm mb-0">
-                        <!-- Previous Button -->
                         <li class="page-item <?php echo $page <= 1 ? 'disabled' : ''; ?>">
                             <a class="page-link" href="?<?php 
                                 $params_array = $_GET;
@@ -269,7 +313,6 @@
                         }
                         ?>
                         
-                        <!-- Next Button -->
                         <li class="page-item <?php echo $page >= $total_pages ? 'disabled' : ''; ?>">
                             <a class="page-link" href="?<?php 
                                 $params_array = $_GET;
@@ -285,7 +328,6 @@
     </div>
 </div>
 
-<!-- Preview Modal -->
 <div class="modal fade" id="previewModal" tabindex="-1">
     <div class="modal-dialog modal-xl modal-dialog-centered modal-dialog-scrollable">
         <div class="modal-content">
@@ -294,9 +336,9 @@
                 <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
             </div>
             <div class="modal-body" id="previewContent">
-                <!-- Content will be loaded here -->
-            </div>
+                </div>
             <div class="modal-footer">
+                <button type="button" class="btn btn-danger" id="modalCancelBtn" style="display:none;">Cancel Request</button>
                 <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Close</button>
             </div>
         </div>
@@ -304,31 +346,279 @@
 </div>
 
 <script>
+let currentPreviewRequestId = null;
 function showPreview(requestId) {
     console.log('showPreview called:', requestId);
     // Load request details via AJAX
     fetch(`get_request_details.php?id=${requestId}`)
-        .then(response => response.text())
+        .then(response => response.json())
         .then(data => {
-            document.getElementById('previewContent').innerHTML = data;
+            const html = data && typeof data === 'object' ? (data.html || '') : '';
+            const status = data && typeof data === 'object' ? (data.status || '') : '';
+            currentPreviewRequestId = requestId;
+            document.getElementById('previewContent').innerHTML = html;
+
+            // Toggle Cancel button visibility
+            const btn = document.getElementById('modalCancelBtn');
+            if (status === 'pending' || status === 'in-progress') {
+                btn.style.display = '';
+                btn.dataset.requestId = String(requestId);
+            } else {
+                btn.style.display = 'none';
+                delete btn.dataset.requestId;
+            }
+
+            // Use Bootstrap 5 modal object
             new bootstrap.Modal(document.getElementById('previewModal')).show();
         })
         .catch(error => {
             console.error('Error:', error);
-            Swal.fire({
-                icon: 'error',
-                title: 'Loading Error',
-                text: 'Error loading preview'
-            });
+            // Assuming you have a Swal (SweetAlert) library
+            if (typeof Swal !== 'undefined') {
+                Swal.fire({
+                    icon: 'error',
+                    title: 'Loading Error',
+                    text: 'Error loading preview'
+                });
+            } else {
+                alert('Error loading preview');
+            }
         });
 }
 
-// Auto-submit form when filters change
-document.querySelectorAll('select[name="status"], select[name="doc_type"], select[name="date_range"]').forEach(select => {
-    select.addEventListener('change', function() {
+// Cancel button handler with SweetAlert reason dropdown (+ robust fallback)
+document.addEventListener('click', async (e) => {
+    const cancelBtn = e.target && typeof e.target.closest === 'function'
+        ? e.target.closest('#modalCancelBtn')
+        : null;
+    if (!cancelBtn) return;
+
+    const requestId = cancelBtn.dataset.requestId || currentPreviewRequestId;
+    if (!requestId) return;
+
+    // Fallback if SweetAlert2 isn't loaded
+    if (!(window.Swal && typeof Swal.fire === 'function')) {
+        const proceed = window.confirm('Cancel this request?');
+        if (!proceed) return;
+        let reason = window.prompt('Please enter a reason for cancellation (required):', '');
+        if (!reason || !reason.trim()) {
+            window.alert('Cancellation reason is required.');
+            return;
+        }
+        await submitCancellation(requestId, reason.trim());
+        return;
+    }
+
+    const reasonOptions = [
+        'Duplicate Request',
+        'Incorrect Information Provided',
+        'Incomplete Requirements',
+        'User No Longer Needs the Document',
+        'Payment Issue',
+        'Document Not Applicable',
+        'User Requested Cancellation',
+        'Admin Cancelled Due to Verification Failure',
+        'System Error / Technical Issue',
+        'User Did Not Respond',
+        'other (specify)'
+    ];
+
+    const { value: formValues, isConfirmed } = await Swal.fire({
+        title: 'Cancel Request',
+        html: `
+            <div class="text-start">
+                <label class="form-label">Select a reason</label>
+                <select id="swal-cancel-reason" class="form-select">
+                    ${reasonOptions.map(r => `<option value="${r}">${r}</option>`).join('')}
+                </select>
+                <div id="swal-other-wrap" class="mt-2" style="display:none;">
+                    <label class="form-label">Please specify</label>
+                    <textarea id="swal-cancel-other" class="form-control" placeholder="Enter details..."></textarea>
+                </div>
+            </div>
+        `,
+        focusConfirm: false,
+        showCancelButton: true,
+        confirmButtonText: 'Cancel Request',
+        preConfirm: () => {
+            const sel = document.getElementById('swal-cancel-reason');
+            const other = document.getElementById('swal-cancel-other');
+            let chosen = sel ? sel.value : '';
+            if (!chosen) {
+                Swal.showValidationMessage('Please select a reason');
+                return false;
+            }
+            if (chosen === 'other (specify)') {
+                const txt = (other?.value || '').trim();
+                if (!txt) {
+                    Swal.showValidationMessage('Please specify the reason');
+                    return false;
+                }
+                chosen = `Other: ${txt}`;
+            }
+            return { reason: chosen };
+        },
+        didOpen: () => {
+            const sel = document.getElementById('swal-cancel-reason');
+            const wrap = document.getElementById('swal-other-wrap');
+            sel?.addEventListener('change', () => {
+                wrap.style.display = sel.value === 'other (specify)' ? '' : 'none';
+            });
+        }
+    });
+
+    if (!isConfirmed || !formValues) return;
+    await submitCancellation(requestId, formValues.reason);
+});
+
+async function submitCancellation(requestId, reason) {
+    try {
+        const res = await fetch('cancel_request.php', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+            body: new URLSearchParams({ id: String(requestId), reason: reason || '' })
+        });
+        const data = await res.json();
+        if (!data.success) throw new Error(data.message || 'Failed to cancel');
+
+        // Update UI: hide cancel button, update table row badge, and refresh modal content
+        const btn = document.getElementById('modalCancelBtn');
+        if (btn) { btn.style.display = 'none'; }
+
+        // Update table row badge
+        const row = document.querySelector(`tr[data-request-id="${requestId}"]`);
+        if (row) {
+            const statusCell = row.querySelector('td:nth-child(4) span.badge');
+            if (statusCell) {
+                statusCell.className = 'badge bg-secondary';
+                statusCell.textContent = 'Cancelled';
+            }
+        }
+
+        // Optionally refresh the modal content to show updated status & remarks
+        try {
+            const details = await fetch(`get_request_details.php?id=${requestId}`).then(r => r.json());
+            const html = details && typeof details === 'object' ? (details.html || '') : '';
+            document.getElementById('previewContent').innerHTML = html;
+        } catch {}
+
+        await Swal.fire({ icon: 'success', title: 'Cancelled', text: data.message, timer: 1500, showConfirmButton: false });
+    } catch (err) {
+        console.error(err);
+        if (typeof Swal !== 'undefined') {
+            Swal.fire({ icon: 'error', title: 'Error', text: err.message || 'Unable to cancel request' });
+        } else {
+            alert('Unable to cancel request');
+        }
+    }
+}
+
+// Function to clear the specific date filter input field
+function clearSpecificDateFilter() {
+    const datePickerElement = document.getElementById("datePicker");
+    if (datePickerElement && datePickerElement._flatpickr) {
+        // Clear the flatpickr instance value
+        datePickerElement._flatpickr.clear();
+        // Since the form uses 'Apply Filters', no auto-submit needed here
+    }
+}
+
+document.addEventListener('DOMContentLoaded', () => {
+    // 1. Flatpickr Initialization
+    const datePickerElement = document.getElementById("datePicker");
+    if (typeof flatpickr !== 'undefined' && datePickerElement) {
+        flatpickr(datePickerElement, {
+            dateFormat: "Y-m-d",
+            allowInput: true,
+        });
+        
+        // Ensure the input field reflects the URL parameter on page load
+        const url = new URL(window.location);
+        const dateInput = url.searchParams.get('date_input');
+        if(dateInput) {
+            // Check if flatpickr instance exists before calling setDate
+            if (datePickerElement._flatpickr) {
+                datePickerElement._flatpickr.setDate(dateInput, true); 
+            }
+        }
+    }
+
+    // 2. Quick Filter Button Logic: Appends/Toggles filter parameters in URL and navigates
+    document.querySelectorAll('.quick-filter-btn').forEach(button => {
+        button.addEventListener('click', () => {
+            const filterType = button.dataset.filterType;
+            const filterValue = button.dataset.filterValue;
+            const currentUrl = new URL(window.location.href.split('?')[0]); 
+
+            const currentParams = new URLSearchParams(window.location.search);
+            
+            // Copy all existing parameters except 'page', and the filter being modified
+            const paramsToIgnore = ['page', filterType]; 
+            currentParams.forEach((value, key) => {
+                if (!paramsToIgnore.includes(key)) {
+                    currentUrl.searchParams.set(key, value);
+                }
+            });
+            
+            // Check if this filter value is already active for this type
+            const isCurrentlyActive = currentParams.get(filterType) === filterValue;
+            
+            // If active, do nothing (it's already been cleared above); otherwise, set it.
+            if (!isCurrentlyActive) {
+                currentUrl.searchParams.set(filterType, filterValue);
+                
+                // When a range filter is set, clear the specific date input as range takes precedence
+                if(filterType === 'date_range') {
+                    currentUrl.searchParams.delete('date_input');
+                }
+            }
+            
+            // Navigate to the new URL
+            window.location.href = currentUrl.toString();
+        });
+    });
+
+    // 3. Ensure filter panel opens if filters are active (using the most recent list of params)
+    const filterPanel = document.getElementById('filterPanel');
+    const url = new URL(window.location);
+    const filterKeys = ['search', 'doc_type', 'date_input', 'status', 'date_range'];
+
+    const hasFilters = filterKeys.some(key => 
+        url.searchParams.get(key)
+    );
+
+    if (hasFilters) {
+        if (filterPanel) {
+            filterPanel.classList.add('show');
+            filterPanel.setAttribute('aria-expanded', 'true');
+        }
+    }
+    
+    // 4. Auto-submit form when Document Type changes
+    document.querySelector('select[name="doc_type"]').addEventListener('change', function() {
         this.form.submit();
     });
 });
 </script>
+
+<style>
+/* Style to ensure active quick filter button retains the "active" look */
+.quick-filter-btn.active {
+    background-color: var(--bs-warning); 
+    color: white;
+    border-color: var(--bs-warning);
+}
+.btn-outline-info.quick-filter-btn.active {
+    background-color: var(--bs-info); 
+    color: white;
+    border-color: var(--bs-info);
+}
+
+/* Ensure flatpickr icon is visible and aligned */
+.input-group > .flatpickr-mobile {
+    flex: 1 1 auto;
+    width: 1%;
+}
+</style>
 
 <?php include 'footer.php'; ?>

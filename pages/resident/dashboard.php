@@ -18,10 +18,7 @@ function formatNumberShort($number) {
 include 'header.php';
 $residentId = $_SESSION['user_id'];
 
-
-
-// Your existing PHP queries and logic here
-$queries = [
+$queries = array(
   'overview' => "
 SELECT
   COUNT(*) AS total_requests,
@@ -41,40 +38,33 @@ WHERE resident_id = ?
     ORDER BY request_date ASC
   ",
   'recent_requests' => "
-  SELECT dr.request_id, dt.doc_name, dr.request_status, dr.date_requested,
-         s.schedule_date
+ SELECT dr.request_id, dt.doc_name, dr.request_status, dr.date_requested
   FROM document_requests dr
   JOIN document_types dt ON dr.doc_type_id = dt.doc_type_id
-  LEFT JOIN schedule s ON dr.schedule_id = s.schedule_id
   WHERE dr.resident_id = ?
+    AND dr.request_status NOT IN ('cancelled', 'rejected', 'completed')
   ORDER BY dr.date_requested DESC
 ",
   'revenue' => "
-    SELECT SUM(dt.doc_price) AS total_spent,
-           COUNT(*) AS total_docs
+    SELECT 
+        SUM(dt.doc_price) AS total_spent,
+        COUNT(dr.request_id) AS total_docs
     FROM document_requests dr
     JOIN document_types dt ON dr.doc_type_id = dt.doc_type_id
     WHERE dr.resident_id = ?
+      AND dr.request_status = 'completed'
   ",
-  'active_schedule' => "
-    SELECT schedule_id, schedule_date, schedule_slots
-    FROM schedule
-    WHERE schedule_date >= CURDATE()
-      AND schedule_slots > 0
-    ORDER BY schedule_date ASC
-    LIMIT 1
-"
-];
+);
 
 
 
 
 
-$stats = [];
+$stats = array();
 foreach ($queries as $key => $sql) {
     $stmt = $pdo->prepare($sql);
     if (strpos($sql, '?') !== false) {
-        $stmt->execute([$residentId]);
+      $stmt->execute(array($residentId));
     } else {
         $stmt->execute();
     }
@@ -83,44 +73,34 @@ foreach ($queries as $key => $sql) {
 extract($stats);
 
 // Chart data
-$chartLabels = [];
-$chartData = [];
+$chartLabels = array();
+$chartData = array();
 for ($i = 6; $i >= 0; $i--) {
-  $day = date('D', strtotime("-$i days"));
+  $day = date('D', strtotime('-' . $i . ' days'));
   $chartLabels[] = $day;
   $chartData[$day] = 0;
 }
 $trendStmt = $pdo->prepare($queries['trend']);
-$trendStmt->execute([$residentId]);
+$trendStmt->execute(array($residentId));
 foreach ($trendStmt->fetchAll(PDO::FETCH_ASSOC) as $row) {
   $chartData[date('D', strtotime($row['request_date']))] = (int)$row['total'];
 }
 
 $stmt = $pdo->prepare($queries['recent_requests']);
-$stmt->execute([$residentId]);
+$stmt->execute(array($residentId));
 $recent_requests = $stmt->fetchAll(PDO::FETCH_ASSOC);
 
-$queries['active_schedule_list'] = "
-  SELECT schedule_id, schedule_date, schedule_slots
-  FROM schedule
-  WHERE schedule_date >= CURDATE()
-    AND schedule_slots > 0
-  ORDER BY schedule_date ASC
-";
-$stmt = $pdo->prepare($queries['active_schedule_list']);
-$stmt->execute();
-$active_schedule_list = $stmt->fetchAll(PDO::FETCH_ASSOC);
+// schedule removed; keep empty list to avoid UI errors
+$active_schedule_list = array();
 ?>
 
-
-<!-- METHEMETHIC -->
 <?php
-// Add these queries to your existing queries array
 $queries['weekly_revenue'] = "
     SELECT SUM(dt.doc_price) AS weekly_spent
     FROM document_requests dr
     JOIN document_types dt ON dr.doc_type_id = dt.doc_type_id
     WHERE dr.resident_id = ?
+      AND dr.request_status = 'completed'
       AND dr.date_requested >= CURDATE() - INTERVAL 7 DAY
 ";
 
@@ -129,10 +109,11 @@ $queries['monthly_revenue'] = "
     FROM document_requests dr
     JOIN document_types dt ON dr.doc_type_id = dt.doc_type_id
     WHERE dr.resident_id = ?
+      AND dr.request_status = 'completed'
       AND dr.date_requested >= CURDATE() - INTERVAL 30 DAY
 ";
 
-// Execute the new queries
+
 $weekly_stmt = $pdo->prepare($queries['weekly_revenue']);
 $weekly_stmt->execute([$residentId]);
 $weekly_revenue = $weekly_stmt->fetch(PDO::FETCH_ASSOC);
@@ -143,31 +124,24 @@ $monthly_revenue = $monthly_stmt->fetch(PDO::FETCH_ASSOC);
 ?>
 
 <style>
-  
 body {
-  margin-left:80px;
   margin-top:0px;
-  padding: 0;
+  margin-left: 60px;
+  padding: 0 !important;
   overflow-x: hidden;
 }
 
 .container {
   margin-top: 0.5rem !important;
   padding-top: 0 !important;
+  margin-left: 0 !important;
   max-width: 100%;
 }
-
-.navbar {
-  margin-bottom: 0 !important;
-  padding-bottom: 0.5rem !important;
-}
-
-/* ===== DASHBOARD GRID LAYOUT ===== */
 .dashboard-grid {
   display: grid;
   grid-template-areas:
     "overview trend recent"
-    "revenue schedule recent";
+    "revenue revenue recent";
   grid-template-columns: 2fr 2fr 1.5fr;
   grid-template-rows: 1fr 1fr;
   gap: 1.5rem;
@@ -180,9 +154,6 @@ body {
 .trend { grid-area: trend; }
 .recent { grid-area: recent; }
 .revenue { grid-area: revenue; }
-.schedule { grid-area: schedule; }
-
-/* ===== STAT CARDS ===== */
 .stat-card {
   border-radius: 16px;
   padding: 1.25rem;
@@ -216,8 +187,6 @@ body {
   font-size: 1rem;
   margin-bottom: 0.5rem;
 }
-
-/* ===== STATUS BADGES ===== */
 .status-badge {
   position: absolute;
   top: 8px;
@@ -248,8 +217,6 @@ body {
   background-color: #b7eb8f;
   color: #135200;
 }
-
-/* ===== REQUEST OVERVIEW ===== */
 .stat-card.overview {
   padding: 1rem 1rem 0.75rem 1rem;
 }
@@ -317,7 +284,6 @@ body {
   font-weight: 500;
 }
 
-/* ===== REQUEST TREND ===== */
 .stat-card.trend {
   padding: 1.25rem 1.25rem 1rem 1.25rem;
 }
@@ -372,7 +338,6 @@ body {
   flex-grow: 1;
 }
 
-/* ===== RECENT REQUESTS ===== */
 .stat-card.recent {
   display: flex;
   flex-direction: column;
@@ -485,7 +450,6 @@ body {
   color: #495057;
 }
 
-/* ===== REVENUE SECTION ===== */
 .total-revenue-container {
   background: #e9ecef;
   border-radius: 10px;
@@ -582,7 +546,6 @@ body {
   color: #2c3e50;
 }
 
-/* ===== SCHEDULE SECTION ===== */
 .schedule-header {
   display: flex;
   justify-content: space-between;
@@ -738,7 +701,6 @@ body {
   color: #495057;
 }
 
-/* ===== EMPTY STATES ===== */
 .empty-state, .schedule-empty {
   text-align: center;
   padding: 2rem 1rem;
@@ -771,14 +733,6 @@ body {
   opacity: 0.7;
 }
 
-.text-muted {
-  padding: 1.5rem;
-  text-align: center;
-  color: #6c757d !important;
-  font-style: italic;
-}
-
-/* ===== SCROLLBAR STYLING ===== */
 #recentRequestsList, #scheduleList {
   flex-grow: 1;
   overflow-y: auto;
@@ -808,7 +762,7 @@ body {
   background: #a8a8a8;
 }
 
-/* ===== ANIMATIONS ===== */
+
 @keyframes fadeInUp {
   from {
     opacity: 0;
@@ -820,7 +774,6 @@ body {
   }
 }
 
-/* ===== RESPONSIVE DESIGN ===== */
 @media (max-width: 1200px) {
   .dashboard-grid {
     grid-template-areas:
@@ -960,66 +913,254 @@ body {
   }
 }
 
-@media (max-width: 480px) {
-grid-template-areas:
-  "overview"
-  "trend"
-  "revenue"
-  "schedule"
-  "recent";
-
-  .recent-header {
-    margin-bottom: 0.75rem;
+@media (max-width: 430px) {
+  .dashboard-grid {
+    grid-template-areas:
+      "overview"
+      "trend"
+      "revenue"
+      "schedule"
+      "recent";
+    grid-template-columns: 1fr;
+    grid-template-rows: auto auto auto auto auto;
+    gap: 0.75rem;
+    height: auto;
+    min-height: auto;
+    padding: 0.5rem;
   }
-  
-  .compact-list {
+
+  .stat-card {
+    min-height: 140px;
+    padding: 0.75rem;
+    margin-bottom: 0;
+  }
+
+  /* OVERVIEW - MOBILE */
+  .stat-card.overview {
+    padding: 0.75rem;
+  }
+
+  .total-request-container {
+    padding: 0.6rem;
+    margin-bottom: 0.6rem;
+  }
+
+  .total-request-container .stat-body {
+    font-size: 1.8rem;
+  }
+
+  .total-request-container .stat-footer {
+    font-size: 0.75rem;
+  }
+
+  .overview-metrics {
+    grid-template-columns: 1fr 1fr 1fr;
     gap: 0.4rem;
   }
-  
-  .item-action {
-    display: none;
+
+  .overview-metrics .metric {
+    padding: 0.4rem 0.2rem;
+    min-height: 50px;
   }
-  
-  .metric-header {
+
+  .overview-metrics .stat-body {
+    font-size: 1.2rem;
+  }
+
+  .overview-metrics .stat-footer {
+    font-size: 0.7rem;
+  }
+
+  /* TREND CHART - MOBILE */
+  .chart-header {
     flex-direction: column;
-    gap: 0.25rem;
-    align-items: center;
+    align-items: flex-start;
+    gap: 0.5rem;
+    margin-bottom: 0.75rem;
   }
-  
-  .trend-indicator {
-    font-size: 0.65rem;
+
+  .trend-indicator-top {
+    align-self: flex-start;
+    padding: 0.3rem 0.6rem;
   }
-  
-  .schedule-header {
+
+  .chart-container {
+    height: 120px;
+    min-height: 120px;
+  }
+
+  /* RECENT REQUESTS - MOBILE */
+  .recent-header {
+    margin-bottom: 0.6rem;
     flex-direction: column;
     align-items: flex-start;
     gap: 0.5rem;
   }
-  
-  .schedule-count {
-    align-self: flex-start;
+
+  .compact-list {
+    gap: 0.4rem;
   }
-  
+
+  .compact-item {
+    padding: 0.6rem;
+    min-height: 55px;
+  }
+
+  .status-badge {
+    font-size: 0.6rem;
+    padding: 0.15rem 0.4rem;
+    margin-right: 0.5rem;
+  }
+
+  .item-content {
+    min-width: 0;
+  }
+
+  .doc-name {
+    font-size: 0.8rem;
+  }
+
+  .item-details {
+    flex-direction: column;
+    gap: 0.2rem;
+    font-size: 0.7rem;
+  }
+
+  .item-action {
+    display: none;
+  }
+
+  /* REVENUE - MOBILE */
+  .total-revenue-container {
+    padding: 0.6rem;
+    margin-bottom: 0.6rem;
+  }
+
+  .total-revenue-container .stat-body {
+    font-size: 1.8rem;
+  }
+
+  .total-revenue-container .stat-footer {
+    font-size: 0.75rem;
+  }
+
+  .revenue-metrics {
+    flex-direction: column;
+    gap: 0.4rem;
+  }
+
+  .revenue-metric {
+    padding: 0.5rem 0.4rem;
+  }
+
+  .metric-header {
+    flex-direction: row;
+    justify-content: space-between;
+    margin-bottom: 0.3rem;
+  }
+
+  .metric-value {
+    font-size: 0.9rem;
+  }
+
+  /* SCHEDULE - MOBILE */
+  .schedule-header {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 0.5rem;
+    margin-bottom: 0.6rem;
+  }
+
+  .schedule-list {
+    gap: 0.5rem;
+  }
+
   .schedule-item {
     padding: 0.6rem;
+    min-height: 60px;
   }
-  
+
+  .schedule-date {
+    min-width: 40px;
+    margin-right: 0.6rem;
+    padding: 0.3rem;
+  }
+
+  .date-day {
+    font-size: 1rem;
+  }
+
+  .date-month {
+    font-size: 0.6rem;
+  }
+
+  .date-year {
+    font-size: 0.5rem;
+  }
+
+  .schedule-details {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 0.3rem;
+  }
+
+  .schedule-slots {
+    margin-left: 0;
+  }
+
+  .slots-indicator {
+    font-size: 0.65rem;
+    padding: 0.2rem 0.4rem;
+  }
+
   .schedule-action {
     display: none;
   }
-  
+
+  .empty-state,
   .schedule-empty {
     padding: 1.5rem 1rem;
   }
-  
+
   .empty-icon {
-    font-size: 2rem;
+    font-size: 1.8rem;
+    margin-bottom: 0.5rem;
+  }
+
+  .empty-title {
+    font-size: 0.9rem;
+  }
+
+  .empty-subtitle {
+    font-size: 0.75rem;
+  }
+
+  #recentRequestsList,
+  #scheduleList {
+    max-height: 200px;
+  }
+
+  .card-title,
+  .chart-subtitle {
+    font-size: 0.75rem;
   }
 }
 
+@media (max-width: 430px) and (pointer: coarse) {
+  .stat-card,
+  .compact-item,
+  .schedule-item {
+    cursor: default;
+  }
 
+  .stat-card:active,
+  .compact-item:active,
+  .schedule-item:active {
+    background: #f8f9fa;
+    transform: scale(0.98);
+  }
+}
 
-/* ===== ENHANCED MOBILE RESPONSIVENESS ===== */
 @media (max-width: 768px) {
   .dashboard-grid {
     grid-template-areas:
@@ -1144,8 +1285,14 @@ grid-template-areas:
   }
 }
 
-/* ===== SMALL MOBILE (480px and below) ===== */
 @media (max-width: 480px) {
+
+  body {
+  margin-left:0px;
+  margin-top:0px;
+  padding: 0;
+  overflow-x: hidden;
+}
   .dashboard-grid {
     grid-template-areas:
       "overview"
@@ -1275,7 +1422,6 @@ grid-template-areas:
   }
 }
 
-/* ===== LANDSCAPE MOBILE OPTIMIZATION ===== */
 @media (max-width: 768px) and (orientation: landscape) {
   .dashboard-grid {
     grid-template-areas:
@@ -1298,7 +1444,6 @@ grid-template-areas:
   }
 }
 
-/* ===== ENSURE CONTENT FITS MOBILE SCREENS ===== */
 @media (max-width: 768px) {
   .container {
     padding: 0 0.75rem;
@@ -1309,7 +1454,6 @@ grid-template-areas:
   }
 }
 
-/* ===== TOUCH FRIENDLY INTERACTIONS ===== */
 @media (hover: none) and (pointer: coarse) {
   .stat-card:hover,
   .compact-item:hover,
@@ -1331,19 +1475,18 @@ grid-template-areas:
 
 </style>
 
-<!-- LIFTED UP Container with minimal top margin -->
 <div class="container">
   <div class="dashboard-grid">
 <div class="stat-card overview">
   <div class="fw-bold mb-2">Request Overview</div>
   
-  <!-- Total Request with Hierarchy Background -->
+  <!-- Total Request-->
   <div class="total-request-container mb-2">
     <div class="stat-body"><?= $overview['total_requests'] ?></div>
     <div class="stat-footer">Total Requests</div>
   </div>
 
-  <!-- Pending / In Progress / Ready -->
+  <!-- Request Overview -->
   <div class="overview-metrics">
     <div class="metric">
       <div class="stat-body"><?= $overview['pending'] ?></div>
@@ -1360,7 +1503,7 @@ grid-template-areas:
   </div>
 </div>
 
-   <!-- 📈 Request Trend -->
+   <!--  Request Trend -->
 <div class="stat-card trend">
   <div class="chart-header">
     <div class="chart-title-wrapper">
@@ -1377,7 +1520,7 @@ grid-template-areas:
   </div>
 </div>
 
-    <!-- 📄 Recent Request -->
+    <!--  Recent Request -->
    <div class="stat-card recent">
   <div class="recent-header">
     <div class="fw-bold">Recent Requests</div>
@@ -1413,10 +1556,6 @@ grid-template-areas:
               <span class="doc-name"><?= htmlspecialchars($req['doc_name']) ?></span>
             </div>
             <div class="item-details">
-              <span class="schedule">
-                <i class="fa fa-calendar-alt me-1"></i>
-                <?= $req['schedule_date'] ? date('M d, Y', strtotime($req['schedule_date'])) : 'Not scheduled' ?>
-              </span>
               <span class="requested">
                 <i class="fa fa-clock me-1"></i>
                 <?= date('M d, Y', strtotime($req['date_requested'])) ?>
@@ -1439,12 +1578,11 @@ grid-template-areas:
   </div>
 </div>
 
-    <!-- 💰 Revenue -->
-<!-- 💰 Revenue -->
+<!--  Revenue -->
 <div class="stat-card revenue">
   <div class="fw-bold mb-2">My Total Spending</div>
   
-  <!-- Total Revenue with Hierarchy -->
+  <!-- Total Revenue-->
   <div class="total-revenue-container mb-2">
 
     <div class="stat-body">₱<?= formatNumberShort($revenue['total_spent'] ?? 0, 2) ?></div>
@@ -1474,61 +1612,6 @@ grid-template-areas:
       </div>
       <div class="metric-value">₱<?= formatNumberShort($monthly_revenue['monthly_spent'] ?? 0, 2) ?></div>
     </div>
-  </div>
-</div>
-
-    <!-- 📅 Next Schedule -->
-<div class="stat-card schedule">
-  <div class="schedule-header">
-    <div class="fw-bold">Available Schedule</div>
-    <div class="schedule-count">
-      <span class="badge bg-primary"><?= count($active_schedule_list) ?> available</span>
-    </div>
-  </div>
-  <div class="schedule-list" id="scheduleList">
-    <?php if ($active_schedule_list): ?>
-      <?php foreach ($active_schedule_list as $sched): ?>
-        <a href="request_document.php?schedule_id=<?= urlencode($sched['schedule_id']) ?>" 
-           class="schedule-item">
-          
-          <!-- Date Section -->
-          <div class="schedule-date">
-            <div class="date-day"><?= date('d', strtotime($sched['schedule_date'])) ?></div>
-            <div class="date-month"><?= date('M', strtotime($sched['schedule_date'])) ?></div>
-            <div class="date-year"><?= date('Y', strtotime($sched['schedule_date'])) ?></div>
-          </div>
-
-          <!-- Schedule Details -->
-          <div class="schedule-details">
-            <div class="schedule-info">
-              <div class="schedule-title">Available Schedule</div>
-              <div class="schedule-day"><?= date('l', strtotime($sched['schedule_date'])) ?></div>
-            </div>
-            <div class="schedule-slots">
-              <div class="slots-indicator <?= $sched['schedule_slots'] > 5 ? 'high' : ($sched['schedule_slots'] > 2 ? 'medium' : 'low') ?>">
-                <i class="fas fa-users"></i>
-                <span><?= $sched['schedule_slots'] ?> slots</span>
-              </div>
-            </div>
-          </div>
-
-          <!-- Action Arrow -->
-          <div class="schedule-action">
-            <i class="fas fa-chevron-right"></i>
-          </div>
-        </a>
-      <?php endforeach; ?>
-    <?php else: ?>
-      <div class="schedule-empty">
-        <div class="empty-icon">
-          <i class="fas fa-calendar-times"></i>
-        </div>
-        <div class="empty-text">
-          <div class="empty-title">No upcoming schedules</div>
-          <div class="empty-subtitle">Check back later for new schedules</div>
-        </div>
-      </div>
-    <?php endif; ?>
   </div>
 </div>
 
